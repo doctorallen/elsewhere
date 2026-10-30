@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#06050a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Elsewhere">
+<meta name="description" content="A game with no main quest: an epic that hands you one mission, and a cat on a roof thirty seconds down the road.">
+<title>Elsewhere</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/elsewhere.css">
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud">
+  <div id="topbtns">
+    <button id="bLog" hidden>Log</button>
+    <button id="bDev" hidden>Dev</button>
+  </div>
+  <div id="toasts" aria-live="polite"></div>
+  <div id="prompt" hidden></div>
+  <div id="titlecard" hidden><small id="titleKind"></small><b id="titleName"></b></div>
+</div>
+
+<div id="stickzone"></div>
+<div id="stick" hidden><div id="knob"></div></div>
+<div id="pads" hidden>
+  <button id="bB"></button>
+  <button id="bA"></button>
+</div>
+
+<section id="talk" hidden>
+  <div id="talkLines"></div>
+  <div id="talkAnswers"></div>
+</section>
+
+<section id="log" hidden>
+  <header>
+    <nav><button data-tab="quests" class="on">Quests</button><button data-tab="pack">Pack</button></nav>
+    <button id="logClose" aria-label="Close">✕</button>
+  </header>
+  <div id="logBody"></div>
+</section>
+
+<div id="narrate" hidden><div id="narrateText"></div><form id="narrateAsk" hidden><input id="narrateInput" maxlength="14" autocomplete="off" spellcheck="false"><button>Go</button></form><small id="narrateMore">tap</small></div>
+
+<section id="dev" hidden></section>
+
+<div id="loading">Lighting the lamp…</div>
+<div id="rotate" hidden><span id="rotateText">Turn your phone sideways.</span></div>
+
+<script src="vendor/tycho/dist/tycho.js"></script>
+<script src="vendor/tycho/dist/tyrell.js"></script>
+<script src="vendor/tycho/dist/tycho-minds.js"></script>
+<script src="js/view.js"></script>
+<script src="js/snd.js"></script>
+<script src="js/pad.js"></script>
+<script src="js/figure.js"></script>
+<script src="js/save.js"></script>
+<script src="js/log.js"></script>
+<script src="js/talk.js"></script>
+<script src="js/narrate.js"></script>
+<script src="js/shell.js"></script>
+<script src="js/dev.js"></script>
+<script src="js/pwa.js"></script>
+<script src="quests/road/road.js"></script>
+<script src="quests/pell/pell.js"></script>
+<script src="quests/frogs/frogs.js"></script>
+<script src="quests/lighthouse/lighthouse.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Static checks
+        run: sh test/check.sh && node test/quests.js
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp -r index.html css js quests icons manifest.webmanifest sw.js _site/
+          # Tycho, the engine, and Tyrell, the minds engine (a git submodule):
+          # only the built scripts the page loads
+          mkdir -p _site/vendor/tycho/dist
+          for f in $(grep -o 'src="vendor/tycho/dist/[^"]*"' index.html | cut -d'"' -f2) $(grep -o "importScripts('vendor/tycho/dist/[^']*')" sw.js | cut -d"'" -f2); do cp "$f" _site/vendor/tycho/dist/; done
+          touch _site/.nojekyll
+          # stamp this deploy: a new service worker each time, and a build id
+          BUILD=$(echo "$GITHUB_SHA" | cut -c1-7)
+          sed -i "s/__BUILD__/$BUILD/" _site/sw.js _site/js/pwa.js
+          echo "{\"build\": \"$BUILD\"}" > _site/version.json
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  # The headless tests: the goldens, and the slice played through on a phone.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+        env:
+          CHROME: ${{ steps.chrome.outputs.chrome-path }}
+      # the screenshots a failing test leaves, to look at
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-out
+          path: test/out
+          if-no-files-found: ignore
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: [check, test]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
