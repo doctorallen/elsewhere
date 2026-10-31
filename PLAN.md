@@ -6,6 +6,8 @@ How to build what [DESIGN.md](DESIGN.md) describes, October 2026. The first slic
 
 The first slice is built (Phases 0 to 5): the opening and the three quests, the shell, and the tests (`npm test`: the static checks, the quests' graph, a golden per quest, and the slice played through on a phone by each quest's bot). The three decisions below were taken as recommended. Phase 6, the play-tests with people and the hours per quest, is next. The quests were built in parallel by agents, so their build time says little about what one costs a person.
 
+All four quests now draw in the house style (DESIGN.md): isometric, eight inks a frame, the land running off the frame, painted with `js/ink.js`. No rule, physics or line of dialogue changed for it, and every quest declares `view: 'iso'`.
+
 Two things learned on the way: a Voice thread marked `opens` must name its speaker in its `if` (otherwise anyone can open with it), and a quest's script must build nothing when it loads (the quests' check runs it without a page).
 
 ## The approach

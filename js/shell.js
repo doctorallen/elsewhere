@@ -12,7 +12,7 @@
 //
 // A quest's fields:
 //   id, title, ask        who wants what, in a line
-//   view, hold, px        'side' | 'top' | 'room' | 'text'; which way up the
+//   view, hold, px        'iso' | 'side' | 'top' | 'room' | 'text'; which way up the
 //                         phone goes; its short side in pixels (180)
 //   accepts, offers       the ways in it can take, and out it can give
 //   souvenir              { id, name, rows, pal }: what it leaves in the pack

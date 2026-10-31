@@ -50,10 +50,23 @@ Some rules of thumb:
 
 - **Five to fifteen minutes.** Long enough for a turn, short enough that nobody has to save mid-quest (though they can; the save keeps the quest and where you are in it).
 - **One new thing to learn, at most.** A quest can introduce a new control scheme or a new kind of play, but not both, and the guide shows it in the first minute.
-- **The look changes every time.** Each quest brings its own palette, its own materials for the painter and its own sprite recipes. Flat pixel art in one, strokes and soft shading in the next, a plain text screen in a third. The player's figure is redrawn in each world's style by the same recipe, so they're always recognizable.
+- **The look changes every time, in one hand.** Each quest brings its own eight inks and its own place, drawn in the house style below, and the player is printed in each world's inks by the same recipe, so they're always recognizable.
 - **Failure is a detour, not a death.** There's no health and no game over. Fall off the roof and you land in the neighbor's garden, where there's a different conversation.
 - **It leaves a souvenir.** Every quest puts one small thing in the pack (a saucer, a frog's hat, a word in a dead language). They do nothing. The pack is the player's real progress bar.
 - **It can be replayed.** From the quest log, any finished quest can be visited again, by its seed, exactly as it was.
+
+## The house style
+
+Chosen in October 2026 from a page of studies, across resolution, palette and point of view:
+
+- **Isometric, 320 by 180.** The 2:1 grid at the game's own canvas size. It says what the game is: each quest a small world you could pick up.
+- **Eight inks to a frame, chosen per quest.** Enough for the traveler to keep a blue coat, ginger hair and a red scarf in every world, with a few left for the place. A quest's palette is its identity, and a change of palette can be an event: dusk at the frog stall, the lamp catching at the lighthouse.
+- **The frogs' rule.** A dark outline round everything, flat color inside, a few bold marks, no noise. Detail was tried at this size and took the charm out: speckle, grain and fine dithering all went. Sparse clusters of marks stand for the rest (a few bricks mean a brick wall). Fat rows of dots are the only gradient.
+- **The world doesn't stop at the frame.** A hard edge reads as a floating island, so the land runs off every side and the camera moves over it (full bleed). Paint well past what's on screen.
+- **Horizon, where the sky matters.** The Road keeps a fixed band of dusk behind the land, because the opening needs the Hollow standing over the valley.
+- **Floating is a meaning, not a default.** Only things that are meant to float may float. The house with no floor is the one place so far.
+
+The rules don't have to move for the look: a side-on quest keeps its platform runner, and its plane is laid along the grid (the Road along the road, the terrace along the front of the houses). Height stays height, so jumps, ladders and falls are unchanged.
 
 ## The thread
 
@@ -79,9 +92,9 @@ These are illustrations of the range, not a list to build. Each is a different w
 
 | Quest | World and view | The play | The turn | Tycho |
 | --- | --- | --- | --- | --- |
-| **Mrs. Pell's cat** | A brick terrace, side-on, flat pixel art | Climb drainpipes and ledges after a cat | The skylight opens onto a house with no floor | Platform mover, chunked painter, Voice |
-| **The frog stall** | A pond village of frogs, top-down, soft strokes | Run a noodle stall for one lunch rush: take orders, serve, remember who likes what | The mayor's order is for a fly, and the fly has a name | Top-down mover, items, Tyrell routines and needs |
-| **Nobody's lighthouse** | A lighthouse at night, one room, nearly black | A conversation. The lighthouse talks, and wants to know why ships have stopped coming | It stopped lighting its lamp years ago and hasn't noticed | Voice alone, the audio engine for the sea |
+| **Mrs. Pell's cat** | A brick terrace, isometric, eight inks | Climb drainpipes and ledges after a cat | The skylight opens onto a house with no floor | Platform mover, chunked painter, Voice |
+| **The frog stall** | A pond village of frogs, isometric, eight inks | Run a noodle stall for one lunch rush: take orders, serve, remember who likes what | The mayor's order is for a fly, and the fly has a name | Top-down mover, items, Tyrell routines and needs |
+| **Nobody's lighthouse** | A lighthouse at night, one room, isometric, nearly black | A conversation. The lighthouse talks, and wants to know why ships have stopped coming | It stopped lighting its lamp years ago and hasn't noticed | Voice alone, the audio engine for the sea |
 | **The last tram** | A city after midnight, side-on, neon and rain | Catch a tram across six stops, changing at each; the timetable is wrong on purpose | Every passenger is going to the same funeral, and it's yours | Platform mover, the light model, bloom and reflections, Bree for the passengers |
 | **Mend the quilt** | A grandmother's parlor, top-down, warm | A tile puzzle: lay patches so the pattern matches the one in her head, which she describes badly | Each patch is a scene from a quest you haven't played yet | Grid, items, letter-row sprites |
 | **The dig** | A hillside dig in the rain, side-on, earth tones | Dig down through strata with a brush and a trowel; what you find is logged | Three meters down there's a roof, and under it a lit room with a TV on | Grid changes, collide over tiles, the test kit's goldens for every find |

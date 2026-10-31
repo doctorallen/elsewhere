@@ -1,13 +1,16 @@
 'use strict';
 // ---------------------------------------------------------------------------
-// The frog stall: a pond village of frogs, seen from above, painted in soft
-// brush strokes, bright and flat. Old Ribbit's cook has gone to his sister's,
+// The frog stall: a pond village of frogs, on the isometric grid, outlined and
+// flat in eight inks, the bank and the pond running on past the frame. Old Ribbit's cook has gone to his sister's,
 // so you run the noodle stall for one lunch rush: frogs hop up to the counter
 // on their lily pads, you take their orders, cook at the pot, the steamer or
 // the kettle, and drag the bowl to them. Everyone has a usual; remember it
 // and serve them before they ask, and they love you for it. The turn: the
 // Mayor's usual is a fly, and the fly has a name. The way out is a raft at
 // the end of the bank, at dusk.
+//
+// The rules are all in the world's own flat coordinates; only the pictures and
+// the taps go through `iso` and `unIso`.
 //
 // Tap where to go, tap a frog to take its order, tap a pot to cook, drag the
 // bowl from your hands to a frog (or tap the frog) to serve it. The frogs are
@@ -17,8 +20,6 @@
 // ---------------------------------------------------------------------------
 (() => {
   const W = 400, H = 300, TILE = 8, COLS = W / TILE, ROWS = Math.ceil(H / TILE);
-  // the pond painted past the world's edges, so a tall or wide screen sees water, not a frame
-  const MX = 70, MY = 90;
   // seconds of lunch rush, and when the Mayor comes
   const RUSH = 170, MAYOR_AT = 55;
   const DISHES = { noodles: 'noodles', dumplings: 'dumplings', tea: 'tea', fly: 'a fly' };
@@ -31,7 +32,7 @@
   const SPOTS = [{ x: 150, y: 158, sx: 150, sy: 116 }, { x: 190, y: 158, sx: 190, sy: 116 }, { x: 230, y: 158, sx: 230, sy: 116 }];
   // the solids: the back counter with its pots, the front counter, the rail in front of it, the cellar door
   const SOLIDS = [{ x0: 120, y0: 72, x1: 258, y1: 90 }, { x0: 116, y0: 126, x1: 244, y1: 136 }, { x0: 104, y0: 134, x1: 244, y1: 146 }, { x0: 30, y0: 92, x1: 44, y1: 100 }];
-  const DOOR = { x: 37, y: 98 }, RAFT = { x: 384, y: 122 }, START = { x: 52, y: 112 };
+  const DOOR = { x: 37, y: 98 }, RAFT = { x: 356, y: 204 }, START = { x: 52, y: 112 };
   // the frogs: their usual, their look, their home pad, how hungry they start
   const FROGS = [
     { id: 'pip', name: 'Pip', usual: 'tea', skin: '#9cc84a', hat: 'bow', home: [64, 222], lunch: 0.62 },
@@ -51,121 +52,149 @@
   };
 
   // ---- the pond's shape, from the seed -----------------------------------
+  // the bank runs on past every edge of the picture: only its south side is shore
+  const shore = (x, s) => 184 + Math.sin(x / 37 + s) * 6 + Math.sin(x / 13 + s * 2) * 3;
   const cove = (x, y) => ((x - 190) / 88) ** 2 + ((y - 178) / 36) ** 2 < 1;
-  const landF = (x, y, s) => 1 - ((x - 200) / 182) ** 2 - ((y - 100) / 72) ** 2 + (Tycho.seed.noise(x / 28, y / 28, s) - 0.5) * 0.22;
-  const isLand = (x, y, s) => landF(x, y, s) > 0 && !cove(x, y);
+  const isLand = (x, y, s) => y < shore(x, s) && !cove(x, y);
   const onDeck = (x, y) => x >= 112 && x <= 262 && y >= 62 && y <= 140;
 
+  // ---- the view: the world on the 2:1 grid, and back again ----------------
+  const K = 0.7, FLY_Z = 24;
+  const iso = (x, y, z = 0) => [(x - y) * K, (x + y) * K / 2 - z];
+  const unIso = (ix, iy) => { const a = ix / K, b = iy * 2 / K; return [(a + b) / 2, (b - a) / 2]; };
+  // how much of it is painted: the pond and the bank, well past the frame
+  const GX = -470, GY = -150, GW = 1040, GH = 660;
+
+  // ---- the eight inks, by day and at dusk ----------------------------------
+  const D = 0, M = 1, G = 2, L = 3, R = 4, T = 5, B = 6, O = 7;
+  const DAY = ['#0c2c34', '#1f7a6a', '#8cc84c', '#f0f4a8', '#d8483a', '#b87a3c', '#2a5aa0', '#f08a30'];
+  const DUSK = ['#1c1430', '#4a3a70', '#b0a050', '#ffe0a0', '#d8503a', '#8a5a48', '#6a4a90', '#f0a040'];
+
   // ---- sprites ------------------------------------------------------------
-  const ramp = (hex, n) => Figure.ramp(hex, n);
-  // a brighter ramp for the frogs: the pond's light is flat and high
-  const bright = (hex, n) => { const c = Tycho.color.rgb(hex); return Tycho.color.rampOf([Tycho.color.mixRgb(c, [20, 30, 16], 0.3), c, Tycho.color.mixRgb(c, [255, 252, 220], 0.55)], n, 0.5, 0.25); };
-  const rgb = (hex) => Tycho.color.rgb(hex);
-  // a frog, from the front and a little above: sitting, or mid-hop
-  function frogSprite(def, pose) {
-    const big = def.mayor ? 1.15 : 1, S = Tycho.sprite.Shapes.soft(24, 24, 11);
-    S.line = true;
-    const cx = 12, by = pose === 'hop' ? 15 : 17, sk = bright(def.skin, 6), belly = bright(Tycho.color.mix(def.skin, '#f4e8b0', 0.6), 5);
-    S.ax = 12; S.ay = 21;
-    // back legs, then the body, the belly, the front feet
-    S.ell(cx - 6 * big, by + 3, 3.4 * big, 2.2, sk); S.ell(cx + 6 * big, by + 3, 3.4 * big, 2.2, sk);
-    S.part();
-    S.ell(cx, by, 7 * big, (pose === 'hop' ? 6.5 : 5.6) * big, sk);
-    S.part(false);
-    S.ell(cx, by + 2, 4.4 * big, 3 * big, belly);
-    S.part();
-    S.ell(cx - 3, by + 5, 1.6, 1, sk); S.ell(cx + 3, by + 5, 1.6, 1, sk);
-    S.part();
-    // the eyes, up on top
-    for (const dx of [-3.6, 3.6]) S.ell(cx + dx * big, by - 4.6 * big, 2.3, 2.3, sk);
-    S.part(false);
-    for (const dx of [-3.6, 3.6]) { S.px(cx + dx * big, by - 4.8 * big, [250, 248, 230]); S.px(cx + dx * big + 0.6, by - 4.4 * big, [20, 18, 16]); }
-    // a smile
-    for (let x = -2; x <= 2; x++) S.px(cx + x, by - 0.5 + (Math.abs(x) === 2 ? -0.6 : 0), Tycho.color.mixRgb(rgb(def.skin), [20, 16, 12], 0.6));
-    S.part();
-    hat(S, def.hat, cx, by - 7 * big);
-    return S.done();
+  const FROG = ['...kkk........kkk...', '..kLLLk......kLLLk..', '..kLkkLk....kLkkLk..', '.kgLkkLgkkkkgLkkLgk.', '.kggLLggggggggLLggk.', 'kggggggggggggggggggk', 'kggggggggggggggggggk', 'kgMggggggggggggggMgk', 'kggMMMMMMMMMMMMMMggk', '.kggLLLLLLLLLLLLggk.', '.kMgLLLLLLLLLLLLgMk.', 'kgggkLLLLLLLLLLkgggk', 'kkkkk.kkkkkkkk.kkkkk'];
+  const HOP = [...FROG.slice(0, 11), '.kggkLLLLLLLLkggk.'.padStart(19, '.'), '..kk.kkkkkkkk.kk..'.padStart(19, '.')];
+  // a frog's hat, drawn on top of its head: everyone's the same green otherwise
+  function hat(S, kind) {
+    const y = 12, x = 12;
+    if (kind === 'bow') { S.orect(x - 5, y - 3, 5, 4, R); S.orect(x + 1, y - 3, 5, 4, R); S.rect(x, y - 2, 1, 2, L); }
+    else if (kind === 'cap') { S.orect(x - 5, y - 4, 11, 5, R); S.orect(x + 5, y - 1, 5, 2, R); }
+    else if (kind === 'flower') { S.orect(x + 3, y - 4, 7, 6, L); S.rect(x + 5, y - 2, 3, 2, O); }
+    else if (kind === 'beret') { S.odisc(x, y - 2, 7, 3, O); S.px(x, y - 6, D); }
+    else if (kind === 'straw') { S.orect(x - 9, y - 1, 19, 3, O); S.orect(x - 5, y - 5, 11, 5, O); S.rect(x - 4, y - 2, 9, 1, R); }
+    else if (kind === 'tophat') { S.orect(x - 8, y - 2, 17, 3, D); S.orect(x - 5, y - 8, 11, 7, D); S.rect(x - 4, y - 3, 9, 1, O); }
+    else if (kind === 'kerchief') { S.orect(x - 7, y - 3, 15, 4, R); S.px(x - 3, y - 2, L); S.px(x + 3, y - 2, L); }
   }
-  function hat(S, kind, cx, y) {
-    if (kind === 'bow') { const r = ramp('#e8508a', 4); S.ell(cx - 2, y + 1.5, 1.6, 1.2, r); S.ell(cx + 2, y + 1.5, 1.6, 1.2, r); S.px(cx, y + 1.5, [250, 220, 230]); }
-    else if (kind === 'cap') { const r = ramp('#c84a3a', 4); S.ell(cx, y + 1.2, 4, 2, r); S.box(cx + 1, y + 1.5, cx + 6, y + 2.8, r); }
-    else if (kind === 'flower') { for (const [dx, dy] of [[-1.4, 0], [1.4, 0], [0, -1.4], [0, 1.4]]) S.ell(cx + 3 + dx, y + 1 + dy, 1.2, 1.2, ramp('#f0f0ff', 3)); S.px(cx + 3, y + 1, [244, 216, 74]); }
-    else if (kind === 'beret') { const r = ramp('#3a3a6a', 4); S.ell(cx - 0.5, y + 1, 5, 2, r); S.px(cx, y - 1.2, r[1]); }
-    else if (kind === 'straw') { const r = ramp('#e0b860', 5); S.ell(cx, y + 2, 7, 1.6, r); S.part(); S.ell(cx, y + 0.5, 3.6, 2, r); S.box(cx - 3.4, y + 1, cx + 3.4, y + 1.8, ramp('#c83a32', 3)); }
-    else if (kind === 'tophat') { const r = ramp('#2a2430', 5); S.ell(cx, y + 2, 5.6, 1.4, r); S.part(); S.box(cx - 3, y - 5, cx + 3, y + 1.6, r); S.box(cx - 3, y - 0.2, cx + 3, y + 1, ramp('#c8a03a', 3)); }
-    else if (kind === 'kerchief') { const r = ramp('#d84a3a', 4); S.ell(cx, y + 1.4, 5, 2.2, r); S.px(cx - 1, y + 0.6, [250, 240, 230]); S.px(cx + 2, y + 1.4, [250, 240, 230]); }
+  function frogSprite(def, pose, pal) {
+    const S = new Ink.Sheet(24, 24);
+    S.rows(pose === 'hop' ? HOP : FROG, 2, 10, { k: D, L, g: G, M });
+    hat(S, def.hat);
+    return { c: S.print(pal), e: null, w: 24, h: 24, ax: 12, ay: 21 };
   }
   // the dishes, as little pictures for the bubbles and your hands
   const DISH_ROWS = {
-    noodles: [['..ssss...', '.s.s.s...', '.wwwwwww.', 'BnnynnyB.', 'BBnnnnBB.', '.BBBBBB..', '..BBBB...'], { s: '#f4f4f4', w: '#f0d890', n: '#e8c060', y: '#c8e870', B: '#c84a3a' }],
-    dumplings: [['.........', '..dd.dd..', '.dDDdDDd.', '.dDDdDDd.', 'GGGGGGGGG', '.GgGgGgG.', '..GGGGG..'], { d: '#e8dcc0', D: '#fff4dc', G: '#a8783a', g: '#c89a5a' }],
-    tea: [['..s.s....', '...s.s...', '.CCCCC...', '.CtttCcc.', '.CtttC.c.', '.CCCCCc..', '..CCC....'], { s: '#e8f0f0', C: '#5a9ab8', c: '#5a9ab8', t: '#b8783a' }],
-    fly: [['.ww.ww...', '.wwkww...', '..kkk....', '..kkk....', '...k.....', '.........', '.........'], { w: '#d8f0ff', k: '#2a2a30' }],
+    noodles: [['..ssss...', '.s.s.s...', '.wwwwwww.', 'BnnynnyB.', 'BBnnnnBB.', '.BBBBBB..', '..BBBB...'], { s: L, w: L, n: O, y: G, B: R }],
+    dumplings: [['.........', '..dd.dd..', '.dDDdDDd.', '.dDDdDDd.', 'GGGGGGGGG', '.GgGgGgG.', '..GGGGG..'], { d: O, D: L, G: T, g: O }],
+    tea: [['..s.s....', '...s.s...', '.CCCCC...', '.CtttCcc.', '.CtttC.c.', '.CCCCCc..', '..CCC....'], { s: L, C: B, c: B, t: T }],
+    fly: [['.ww.ww...', '.wwkww...', '..kkk....', '..kkk....', '...k.....', '.........', '.........'], { w: L, k: D }],
   };
-  const dishSprite = (d) => Tycho.sprite.spriteFrom(DISH_ROWS[d][0], DISH_ROWS[d][1]);
-  function stationSprite(id) {
-    const S = Tycho.sprite.Shapes.soft(28, 26, 5); S.line = true; S.ax = 14; S.ay = 22;
-    if (id === 'pot') { S.ell(14, 14, 10, 8, ramp('#3a3a42', 5)); S.part(); S.ell(14, 12, 8, 5.5, ramp('#e8c870', 5)); S.part(); for (let i = 0; i < 6; i++) S.px(9 + i * 2, 11 + (i % 2), [250, 230, 160]); S.ell(10, 13, 1.5, 1, ramp('#7ab84a', 3)); }
-    else if (id === 'steamer') { S.ell(14, 15, 10, 7.5, ramp('#c8a060', 5)); S.part(); S.ell(14, 13, 8.5, 5.5, ramp('#e8cc90', 4)); S.part(); for (let i = 0; i < 6; i++) S.limb(7 + i * 3, 9, 7 + i * 3, 17, 0.6, ramp('#a87a3a', 3)); }
-    else { const r = ramp('#4a8ab0', 5); S.ell(14, 15, 7.5, 7, r); S.part(); S.limb(20, 12, 25, 8, 1.4, r); S.part(); S.ell(14, 10, 3, 1.6, ramp('#8ac0d8', 3)); S.px(14, 8, [40, 40, 50]); }
-    return S.done();
-  }
-  function raftSprite() {
-    const S = Tycho.sprite.Shapes.soft(36, 26, 9); S.line = true; S.ax = 18; S.ay = 22;
-    const r = ramp('#9a6a3a', 5);
-    for (let i = 0; i < 6; i++) S.box(4 + i * 5, 6, 8 + i * 5, 21, i % 2 ? r : r.map((c) => Tycho.color.mixRgb(c, [40, 26, 16], 0.15)));
-    S.part(); S.box(3, 9, 33, 11, ramp('#6a4a2a', 4)); S.box(3, 16, 33, 18, ramp('#6a4a2a', 4));
-    S.part(); S.limb(26, 4, 26, 14, 1, ramp('#d8c8a0', 3));
-    return S.done();
-  }
-  // the cellar door you came through, standing on its own in the reeds
-  // (flat, in the brick terrace's style: it's the one thing here from there)
-  function doorSprite() {
-    const S = Tycho.sprite.Shapes.figure(26, 36, 4); S.ax = 11; S.ay = 33;
-    S.box(2, 2, 20, 33, ramp('#7a5a3e', 4)); S.part();
-    S.box(5, 5, 17, 33, ramp('#0e0a0c', 3)); S.part();
-    S.shape([[17, 5], [24, 3], [24, 34], [17, 33]], ramp('#3a6a4a', 4)); S.part();
-    S.px(22, 19, [230, 200, 90]);
-    return S.done();
-  }
-  const flySprites = () => [Tycho.sprite.spriteFrom(['ww.ww', '.kkk.', '.kkk.', '..k..'], { w: '#e8f6ff', k: '#24242c' }), Tycho.sprite.spriteFrom(['.....', 'wkkkw', '.kkk.', '..k..'], { w: '#e8f6ff', k: '#24242c' })];
+  const flyRows = [['ww.ww', '.kkk.', '.kkk.', '..k..'], ['.....', 'wkkkw', '.kkk.', '..k..']];
 
-  // ---- the ground: water, the bank, the deck, the pads, painted once ------
-  function paintGround(s) {
-    const P = new Tycho.paint.Pix(W + MX * 2, H + MY * 2, -MX, -MY, {});
-    const n = (x, y, k) => Tycho.seed.noise(x / k, y / k, s + 3);
-    const water = Tycho.color.rampOf(['#1e5a6a', '#3a8c96', '#7ac4c0'], 9);
-    P.area(-MX, -MY, W + MX - 1, H + MY - 1, water, (x, y) => Math.max(0.2, Math.min(1, 0.55 + landF(x, y, s) * 0.6 + (n(x, y, 22) - 0.5) * 0.35 - (cove(x, y) ? 0.08 : 0))));
-    const grass = Tycho.color.rampOf(['#4a7a2e', '#7ab040', '#c8e070'], 9), sand = Tycho.color.rampOf(['#a8905a', '#d8c08a', '#f0e0b0'], 7);
-    P.area(0, 0, W - 1, H - 1, sand, (x, y) => 0.45 + (n(x, y, 9) - 0.5) * 0.5, { inside: (x, y) => isLand(x, y, s) });
-    P.area(0, 0, W - 1, H - 1, grass, (x, y) => 0.5 + (n(x, y, 14) - 0.5) * 0.7, { inside: (x, y) => landF(x, y, s) > 0.09 && !(((x - 190) / 96) ** 2 + ((y - 178) / 42) ** 2 < 1) });
-    // the deck: planks, east to west
-    const wood = Tycho.color.rampOf(['#7a5232', '#b8844a', '#e0b878'], 9);
-    P.area(112, 62, 262, 140, wood, (x, y) => 0.55 + ((y - 62) % 7 === 0 ? -0.35 : 0) + ((x + ((y / 7) | 0) * 23) % 31 === 0 ? -0.25 : 0) + (n(x, y, 6) - 0.5) * 0.2);
-    // the back counter and the front counter
-    P.block(120, 72, 258, 90, Tycho.color.rampOf(['#5a3a22', '#8a5a32', '#c08850'], 7), { base: 0.5 });
-    P.block(116, 124, 244, 137, Tycho.color.rampOf(['#6a4228', '#a8703e', '#e0a868'], 7), { base: 0.55 });
-    // the awning along the back, red and cream
-    P.area(110, 56, 264, 68, Tycho.color.rampOf(['#8a2a22', '#d84a3a', '#f4e0c0'], 7), (x, y) => ((x - 110) % 16 < 8 ? 0.45 : 0.95) - (y > 66 ? 0.3 : 0));
-    // lily pads: the counter's, the frogs' homes, Ribbit's, and more
-    const pad = Tycho.color.rampOf(['#2e6a2a', '#5aa040', '#a8d870'], 7);
-    const R = new Tycho.seed.Rng(s + 41);
-    const pads = SPOTS.map((p) => [p.x, p.y + 2, 11]).concat(FROGS.map((f) => [f.home[0], f.home[1] + 2, f.mayor ? 14 : 11]), [[300, 224, 11]]);
-    for (let i = 0; i < 70; i++) { const x = R.f(10 - MX, W + MX - 10), y = R.f(10 - MY, H + MY - 10), r = R.f(4, 9); if (landF(x, y, s) < -0.05 && !SPOTS.some((p) => Math.hypot(p.x - x, p.y - y) < 18)) pads.push([x, y, r]); }
-    for (const [px, py, r] of pads) {
-      const notch = R.f(-3, 3);
-      P.area(Math.floor(px - r - 1), Math.floor(py - r), Math.ceil(px + r + 1), Math.ceil(py + r), pad, (x, y) => 0.55 - (x - px) / r * 0.25 - (y - py) / r * 0.2, { inside: (x, y) => ((x - px) / (r + 1)) ** 2 + ((y - py) / (r * 0.8)) ** 2 < 1 && !(Math.abs(Math.atan2(y - py, x - px) - notch) < 0.3 && Math.hypot(x - px, y - py) > 2) });
-      if (R.chance(0.3)) { const fx = Math.round(px + R.f(-r / 2, r / 2)), fy = Math.round(py + R.f(-r / 3, r / 3)); P.put(fx, fy, [250, 170, 200]); P.put(fx + 1, fy, [250, 200, 220]); P.put(fx, fy - 1, [250, 200, 220]); P.put(fx + 1, fy - 1, [255, 240, 140]); }
+  // ---- the pictures, painted once for each palette ------------------------
+  // the pad under a frog: a dark rim, flat green, a highlight, a notch of water
+  function pad(S, x, y, r) {
+    S.disc(x, y, r, r * 0.62, D); S.disc(x, y - 1, r - 1, r * 0.62 - 1, G); S.disc(x - 3, y - 3, r * 0.5, r * 0.25, L);
+    S.poly([[x, y], [x + r + 2, y + 3], [x + r, y + 9]], B);
+    for (let a = 0.8; a < 6; a += 0.9) S.line(x, y, x + Math.cos(a) * r * 0.8, y + Math.sin(a) * r * 0.48, M);
+  }
+  function paintGround(sd) {
+    const S = new Ink.Sheet(GW, GH); S.ox = GX; S.oy = GY;
+    const land = new Uint8Array(GW * GH);
+    for (let py = 0; py < GH; py++) for (let px = 0; px < GW; px++) { const [x, y] = unIso(px + GX, py + GY); land[py * GW + px] = isLand(x, y, sd) ? 1 : 0; }
+    for (let py = 4; py < GH - 1; py++) for (let px = 1; px < GW - 1; px++) {
+      const i = py * GW + px;
+      if (land[i]) S.d[i] = land[i - 1] && land[i + 1] && land[i - GW] && land[i + GW] ? G : D;
+      else S.d[i] = land[i - GW] ? D : land[i - GW * 2] || land[i - GW * 3] || land[i - GW * 4] ? O : B;
     }
-    // reeds along the shore
-    const reed = [[40, 72, 30], [70, 100, 50], [120, 160, 80]];
-    for (let i = 0; i < 90; i++) {
-      const x = R.f(8 - MX, W + MX - 8), y = R.f(20 - MY, H + MY - 30), f = landF(x, y, s);
-      if (f > 0 || f < -0.06 || cove(x, y)) continue;
-      const hgt = R.i(5, 10);
-      for (let k = 0; k < 3; k++) { const rx = Math.round(x + R.f(-3, 3)); for (let j = 0; j < hgt; j++) P.put(rx + (j > hgt * 0.7 ? 1 : 0), Math.round(y) - j, reed[k % 3]); P.put(rx, Math.round(y) - hgt, [110, 70, 40]); P.put(rx, Math.round(y) - hgt - 1, [110, 70, 40]); }
+    // ripples on the water, tufts and a few flowers on the bank: sparse, and in rows
+    const R2 = new Tycho.seed.Rng(sd + 41);
+    for (let j = 0; j < 42; j++) for (let i = 0; i < 36; i++) {
+      const ix = GX + i * 32 + (j & 1) * 16, iy = GY + j * 16 + 6, [x, y] = unIso(ix, iy);
+      if (isLand(x, y - 10, sd) || isLand(x, y + 10, sd)) continue;
+      S.rect(ix, iy, 6, 1, M); S.rect(ix + 6, iy + 1, 4, 1, M);
     }
-    return P.canvases().c;
+    for (let i = 0; i < 260; i++) {
+      const ix = R2.f(GX + 8, GX + GW - 8), iy = R2.f(GY + 8, GY + GH - 8), [x, y] = unIso(ix, iy);
+      if (!isLand(x, y + 8, sd) || !isLand(x, y, sd) || onDeck(x, y)) continue;
+      if (i % 9 === 0) { S.rect(ix, iy, 3, 3, L); S.px(ix + 1, iy + 1, i % 2 ? R : O); } else S.tuft(ix, iy, M);
+    }
+    // pads: the counter's, the frogs' homes, Ribbit's, and more out on the pond
+    const pads = SPOTS.map((p) => [p.x, p.y + 2, 15]).concat(FROGS.map((f) => [f.home[0], f.home[1] + 2, f.mayor ? 17 : 15]), [[300, 224, 15]]);
+    for (let i = 0; i < 46; i++) { const x = R2.f(-30, 470), y = R2.f(210, 420), r = R2.f(8, 13); if (!pads.some((p) => Math.hypot(p[0] - x, p[1] - y) < 34)) pads.push([x, y, r]); }
+    pads.sort((a, b) => a[0] + a[1] - b[0] - b[1]);
+    for (const [x, y, r] of pads) { const [ix, iy] = iso(x, y); pad(S, Math.round(ix), Math.round(iy), r); }
+    // reeds where the bank meets the water
+    for (let x = -80; x < 500; x += R2.f(18, 44)) {
+      const y = shore(x, sd) + 2; if (cove(x, y - 6) || (x > 96 && x < 286)) continue;
+      const [ix, iy] = iso(x, y); S.rect(ix, iy - 13, 1, 13, M); S.rect(ix - 1, iy - 17, 3, 5, T); S.rect(ix + 4, iy - 9, 1, 9, M); S.rect(ix + 3, iy - 13, 3, 5, T);
+    }
+    // the deck
+    const I = new Ink.Iso(S, iso);
+    I.box(112, 62, 0, 150, 78, 3, [T, D, D]);
+    for (let y = 75; y < 140; y += 13) I.line(112, y, 3, 262, y, 3, D);
+    [[150, 62], [214, 75], [132, 88], [236, 88], [176, 101], [120, 114], [214, 127]].forEach(([x, y]) => I.line(x, y, 3, x, y + 13, 3, D));
+    return S;
+  }
+  // the back of the stall (the counter, the three pots, the awning over them)
+  // and the counter at the front: a body walks behind these, so they're apart
+  const BACK = { x: -150, y: -60, w: 330, h: 220 }, FRONT = { x: -120, y: 60, w: 300, h: 130 };
+  function paintBack() {
+    const S = new Ink.Sheet(BACK.w, BACK.h); S.ox = BACK.x; S.oy = BACK.y;
+    const I = new Ink.Iso(S, iso);
+    I.box(120, 72, 3, 138, 18, 13, [O, T, D]);
+    for (const [x, y] of [[106, 60], [270, 60]]) I.box(x, y, 3, 3, 3, 46, [O, T, D]);
+    const pot = (st, fill, mark) => {
+      const [ix, iy0] = iso(st.x, st.y, 16), iy = iy0 - 3;
+      if (st.id === 'kettle') { S.odisc(ix, iy, 10, 7, B); S.rect(ix - 3, iy - 8, 7, 2, D); S.opoly([[ix + 8, iy - 3], [ix + 16, iy - 9], [ix + 18, iy - 6], [ix + 10, iy + 1]], B); return; }
+      S.odisc(ix, iy, 11, 7, D); S.disc(ix, iy - 1, 8, 4, fill); mark(ix, iy);
+    };
+    pot(STATIONS[0], L, (ix, iy) => { for (const [a, b] of [[-5, -2], [0, 0], [-2, -3]]) S.rect(ix + a, iy + b, 6, 1, O); });
+    pot(STATIONS[1], B, (ix, iy) => { for (const [a, b] of [[-5, -2], [1, -3], [4, 0], [-1, 0]]) S.rect(ix + a, iy + b, 3, 2, L); });
+    pot(STATIONS[2]);
+    for (const [x, y] of [[106, 94], [270, 94]]) I.box(x, y, 3, 3, 3, 46, [O, T, D]);
+    const n = 8, w = 172 / n;
+    for (let i = 0; i < n; i++) { const x = 104 + i * w; S.opoly([iso(x, 96, 48), iso(x + w, 96, 48), iso(x + w, 56, 62), iso(x, 56, 62)], i & 1 ? L : R); }
+    S.opoly([iso(276, 96, 48), iso(276, 56, 62), iso(276, 56, 48)], T);
+    return S;
+  }
+  function paintFront() {
+    const S = new Ink.Sheet(FRONT.w, FRONT.h); S.ox = FRONT.x; S.oy = FRONT.y;
+    new Ink.Iso(S, iso).box(116, 126, 3, 128, 14, 7, [O, T, D]);
+    return S;
+  }
+  // the raft, and the cellar door you came through, standing on its own in the reeds
+  function paintRaft() {
+    const S = new Ink.Sheet(60, 44); S.ox = -30; S.oy = -30;
+    const I = new Ink.Iso(S, iso);
+    I.box(-16, -22, 0, 32, 44, 3, [T, D, D]);
+    for (const y of [-11, 0, 11]) I.line(-16, y, 3, 16, y, 3, D);
+    S.rect(0, -24, 1, 20, D); S.opoly([[1, -24], [11, -10], [1, -10]], L);
+    return S;
+  }
+  function paintDoor() {
+    const S = new Ink.Sheet(40, 52); S.ox = -20; S.oy = -44;
+    const I = new Ink.Iso(S, iso);
+    I.box(-3, -18, 0, 6, 36, 40, [T, T, D]);
+    I.right(3, -13, 0, 26, 33, D);
+    I.right(3, -13, 0, 12, 33, M); S.rect(...iso(3, -3, 16), 2, 2, O);
+    return S;
+  }
+  // every picture in one palette
+  function art(pal, sheets) {
+    const A = { ground: sheets.ground.print(pal), back: sheets.back.print(pal), front: sheets.front.print(pal), raft: sheets.raft.print(pal), door: sheets.door.print(pal), frog: {}, dish: {}, fly: flyRows.map((r) => Ink.sprite(r, { w: L, k: D }, pal, 2, 2).c) };
+    for (const f of FROGS.concat([RIBBIT])) A.frog[f.id] = { sit: frogSprite(f, 'sit', pal), hop: frogSprite(f, 'hop', pal) };
+    for (const d of Object.keys(DISH_ROWS)) A.dish[d] = Ink.sprite(DISH_ROWS[d][0], DISH_ROWS[d][1], pal, 0, 0).c;
+    A.you = Ink.traveler(pal, { k: D, h: O, H: R, s: L, c: B, C: M, r: R, l: M, g: O, G: L });
+    return A;
   }
 
   // ---- the quest ----------------------------------------------------------
@@ -173,7 +202,7 @@
     id: 'frogs',
     title: 'The frog stall',
     ask: "My cook's gone to his sister's and lunch is in ten minutes. Would you mind?",
-    view: 'top', hold: 'any', px: 180,
+    view: 'iso', hold: 'any', px: 180,
     accepts: ['cellar'], offers: ['water'],
     souvenir: {
       id: 'froghat', name: "A frog's hat",
@@ -193,12 +222,9 @@
     score: { bpm: 104, beats: 4, root: 261.63, chords: [[0, 4, 7], [-3, 0, 4], [5, 9, 12], [7, 11, 14]], w: 'triangle', lp: 1500, g: 0.28 },
     make(ctx, way, saved) {
       const sd = ctx.seed % 100000;
-      const ground = paintGround(sd);
-      const sprites = { frog: {}, dish: {}, station: {}, raft: raftSprite(), door: doorSprite(), fly: flySprites() };
-      for (const f of FROGS.concat([RIBBIT])) sprites.frog[f.id] = { sit: frogSprite(f, 'sit'), hop: frogSprite(f, 'hop') };
-      for (const d of Object.keys(DISH_ROWS)) sprites.dish[d] = dishSprite(d);
-      for (const st of STATIONS) sprites.station[st.id] = stationSprite(st.id);
-      const style = { key: 'frogs', h: 20, flat: false, line: true, coat: '#3e6aa0', scarf: '#d8483a', ink: '#1a2a1a' };
+      const sheets = { ground: paintGround(sd), back: paintBack(), front: paintFront(), raft: paintRaft(), door: paintDoor() };
+      const art1 = art(DAY, sheets);
+      let art2 = null;
 
       // where a body can stand, a tile at a time, and the space it moves in
       const water = new Uint8Array(COLS * ROWS), walk = new Uint8Array(COLS * ROWS);
@@ -265,7 +291,7 @@
       // (saved between the rush and dusk: the words are said, it's dusk)
       if (s.phase === 'after') s.phase = 'dusk';
       // the moment to moment, not saved
-      let path = [], goal = null, stuck = 0, drag = null, anim = 0, botCD = 0, beat = 0, beatAt = 0, later = null;
+      let path = [], goal = null, stuck = 0, away = false, drag = null, anim = 0, botCD = 0, beat = 0, beatAt = 0, later = null;
       const cam = { x: -999, y: -999 }, body = { x: s.px, y: s.py }, steam = [], ripples = [];
 
       // the first minute's guide: what to do next, under the view
@@ -298,7 +324,8 @@
         Tycho.move.topdown(space, body, dx * k, dy * k, 3.5);
         const moved = Math.hypot(body.x - ox, body.y - oy);
         s.walked += moved;
-        if (Math.abs(dx) > 0.5) s.face = dx > 0 ? 1 : -1;
+        if (Math.abs(dx - dy) > 0.5) s.face = dx - dy > 0 ? 1 : -1;
+        away = dx + dy < -0.5;
         if (moved < Math.min(sp, d) * 0.2) { stuck += dt; if (stuck > 0.4) { path.shift(); stuck = 0; } } else stuck = 0;
         return true;
       }
@@ -358,20 +385,23 @@
       }
 
       // ---- what a tap or a drag does ----
-      const frogAt = (x, y, r = 12) => FROGS.find((d) => { const f = s.frogs[d.id]; return (f.st === 'waiting' || f.st === 'eating') && Math.hypot(f.x - x, f.y - 6 - y) < r; });
-      const handAt = () => [body.x + 7 * s.face, body.y - 16];
+      // (a tap is a point on the picture: what's tapped is what's drawn there)
+      const near = (x, y, z, ix, iy, r) => { const [a, b] = iso(x, y, z); return Math.hypot(a - ix, b - iy) < r; };
+      const frogAt = (ix, iy, r = 15) => FROGS.find((d) => { const f = s.frogs[d.id]; return (f.st === 'waiting' || f.st === 'eating') && near(f.x, f.y, 9, ix, iy, r); });
+      const handAt = () => { const [a, b] = iso(body.x, body.y); return [a + 7 * s.face, b - 16]; };
       const flyStand = () => [Math.max(126, Math.min(240, s.fly.x)), 108];
       function onTap(x, y) {
-        if (s.phase === 'arrive' && Math.hypot(s.ribbit.x - x, s.ribbit.y - 6 - y) < 16) { goTo(s.ribbit.x + 12, s.ribbit.y + 4, { kind: 'ribbit' }); return; }
-        if (s.phase === 'dusk' && Math.hypot(RAFT.x - x, RAFT.y - 8 - y) < 22) { goTo(RAFT.x - 22, RAFT.y - 6, { kind: 'raft' }); return; }
-        if (s.fly && !s.fly.leaving && Math.hypot(s.fly.x - x, s.fly.y - y) < 14) { const [hx, hy] = flyStand(); goTo(hx, hy, { kind: 'horace' }); return; }
+        if (s.phase === 'arrive' && near(s.ribbit.x, s.ribbit.y, 9, x, y, 18)) { goTo(s.ribbit.x + 12, s.ribbit.y + 4, { kind: 'ribbit' }); return; }
+        if (s.phase === 'dusk' && near(RAFT.x, RAFT.y, 6, x, y, 26)) { goTo(RAFT.x - 14, RAFT.y - 32, { kind: 'raft' }); return; }
+        if (s.fly && !s.fly.leaving && near(s.fly.x, s.fly.y, FLY_Z, x, y, 16)) { const [hx, hy] = flyStand(); goTo(hx, hy, { kind: 'horace' }); return; }
         if (s.phase === 'rush') {
           const d = frogAt(x, y);
           if (d) { const f = s.frogs[d.id]; if (f.st === 'waiting') { const sp = SPOTS[f.spot]; goTo(sp.sx, sp.sy, { kind: 'frog', id: d.id }); } return; }
-          const st = STATIONS.find((q) => Math.hypot(q.x - x, q.y - y) < 14);
+          const st = STATIONS.find((q) => near(q.x, q.y, 20, x, y, 15));
           if (st) { goTo(st.sx, st.sy, { kind: 'cook', id: st.id }); return; }
         }
-        goTo(x, y, { kind: 'walk' });
+        const [wx, wy] = unIso(x, y);
+        goTo(wx, wy, { kind: 'walk' });
       }
       function onEvents(evs) {
         for (const e of evs) {
@@ -525,8 +555,8 @@
         }
         for (const r of ripples) r.t += dt;
         while (ripples.length && ripples[0].t > 0.8) ripples.shift();
-        if (s.cooking && Tycho.seed.fxRand.f() < 0.3) { const st = STATIONS.find((q) => q.id === s.cooking.at); steam.push({ x: st.x + Tycho.seed.fxRand.f(-5, 5), y: st.y - 6, t: 0 }); }
-        for (const p of steam) { p.t += dt; p.y -= 14 * dt; }
+        if (s.cooking && Tycho.seed.fxRand.f() < 0.3) { const st = STATIONS.find((q) => q.id === s.cooking.at); steam.push({ x: st.x + Tycho.seed.fxRand.f(-5, 5), y: st.y, z: 26, t: 0 }); }
+        for (const p of steam) { p.t += dt; p.z += 16 * dt; }
         while (steam.length && steam[0].t > 1) steam.shift();
       }
 
@@ -534,84 +564,80 @@
       function camera(g) {
         const vw = ctx.view.w, vh = ctx.view.h;
         // (in the rush, halfway between you and the middle of the stall, so the counter stays in view)
-        const fx = s.phase === 'rush' ? (body.x + 190) / 2 : body.x, fy = s.phase === 'rush' ? (body.y + 128) / 2 : body.y;
-        const fit = (v, size, m, to) => (v >= size + m * 2 ? (size - v) / 2 : Math.max(-m, Math.min(size + m - v, to - v / 2)));
-        const tx = fit(vw, W, MX, fx), ty = fit(vh, H, MY, fy + 14);
+        const [fx, fy] = iso(s.phase === 'rush' ? (body.x + 190) / 2 : body.x, s.phase === 'rush' ? (body.y + 128) / 2 : body.y);
+        const fit = (v, lo, size, to) => (v >= size ? lo + (size - v) / 2 : Math.max(lo, Math.min(lo + size - v, to - v / 2)));
+        const tx = fit(vw, GX, GW, fx), ty = fit(vh, GY, GH, fy - 22);
         cam.x += (tx - cam.x) * 0.12; cam.y += (ty - cam.y) * 0.12;
         if (Math.abs(cam.x - tx) > 160 || Math.abs(cam.y - ty) > 160) { cam.x = tx; cam.y = ty; }
         g.setTransform(1, 0, 0, 1, -Math.round(cam.x), -Math.round(cam.y));
       }
-      function bubble(g, x, y, dish, k, ask) {
-        g.fillStyle = '#2a2a1e'; g.fillRect(x - 8, y - 9, 16, 12); g.fillStyle = '#fbf6e2'; g.fillRect(x - 7, y - 8, 14, 10); g.fillRect(x - 1, y + 3, 2, 2);
-        if (dish) g.drawImage(sprites.dish[dish], x - 5, y - 7);
-        else { g.fillStyle = ask ? '#c84a3a' : '#5a6a3a'; g.fillRect(x - 1, y - 7, 2, 5); g.fillRect(x - 1, y - 1, 2, 2); }
-        if (k != null) { g.fillStyle = '#2a2a1e'; g.fillRect(x - 7, y + 5, 14, 2); g.fillStyle = k > 0.5 ? '#7ac84a' : k > 0.25 ? '#e8c04a' : '#d84a3a'; g.fillRect(x - 7, y + 5, Math.max(1, Math.round(14 * k)), 2); }
+      function bubble(g, A, pal, x, y, dish, k, ask) {
+        g.fillStyle = pal[D]; g.fillRect(x - 8, y - 9, 16, 12); g.fillStyle = pal[L]; g.fillRect(x - 7, y - 8, 14, 10); g.fillRect(x - 1, y + 3, 2, 2);
+        if (dish) g.drawImage(A.dish[dish], x - 5, y - 7);
+        else { g.fillStyle = ask ? pal[R] : pal[M]; g.fillRect(x - 1, y - 7, 2, 5); g.fillRect(x - 1, y - 1, 2, 2); }
+        if (k != null) { g.fillStyle = pal[D]; g.fillRect(x - 7, y + 5, 14, 2); g.fillStyle = k > 0.5 ? pal[G] : k > 0.25 ? pal[O] : pal[R]; g.fillRect(x - 7, y + 5, Math.max(1, Math.round(14 * k)), 2); }
       }
+      const put = (g, sp, x, y, z = 0) => { const [ix, iy] = iso(x, y, z); g.drawImage(sp.c, Math.round(ix - sp.ax), Math.round(iy - sp.ay)); };
       function draw(g) {
+        const dusk = s.phase === 'dusk' || s.phase === 'gone', pal = dusk ? DUSK : DAY, A = dusk ? (art2 = art2 || art(DUSK, sheets)) : art1;
         const vw = ctx.view.w, vh = ctx.view.h;
-        g.fillStyle = '#2a6474'; g.fillRect(0, 0, vw, vh);
+        g.fillStyle = pal[B]; g.fillRect(0, 0, vw, vh);
         camera(g);
-        g.drawImage(ground, -MX, -MY);
+        g.drawImage(A.ground, GX, GY);
         // glints on the water
-        g.fillStyle = 'rgba(230,255,250,0.55)';
-        for (let i = 0; i < 44; i++) { const gx = (Tycho.seed.hash(i, 3, sd) * (W + MX * 2) - MX) | 0, gy = (Tycho.seed.hash(i, 7, sd) * (H + MY * 2) - MY) | 0; if (landF(gx, gy, sd) < -0.04 && Math.sin(anim * 1.6 + i * 1.3) > 0.65) g.fillRect(gx, gy, 2 + (i % 2), 1); }
-        for (const r of ripples) { g.globalAlpha = 1 - r.t / 0.8; g.fillStyle = '#d8f4f0'; const rr = 4 + r.t * 10; g.fillRect(Math.round(r.x - rr), Math.round(r.y), Math.round(rr * 2), 1); }
+        g.fillStyle = pal[L];
+        for (let i = 0; i < 44; i++) { const x = Tycho.seed.hash(i, 3, sd) * 500 - 50, y = Tycho.seed.hash(i, 7, sd) * 200 + 215; if (Math.sin(anim * 1.6 + i * 1.3) > 0.65) { const [ix, iy] = iso(x, y); g.fillRect(Math.round(ix), Math.round(iy), 3 + (i % 2), 1); } }
+        for (const r of ripples) { g.globalAlpha = 1 - r.t / 0.8; const rr = 5 + r.t * 12, [ix, iy] = iso(r.x, r.y); g.fillRect(Math.round(ix - rr), Math.round(iy), Math.round(rr * 2), 1); }
         g.globalAlpha = 1;
         // what stands, back to front
         const items = [];
-        items.push({ y: DOOR.y, fn: () => g.drawImage(sprites.door.c, DOOR.x - sprites.door.ax, DOOR.y - sprites.door.ay) });
-        for (const st of STATIONS) items.push({ y: st.y + 2, fn: () => { const sp = sprites.station[st.id]; g.drawImage(sp.c, st.x - sp.ax, st.y + 6 - sp.ay); } });
+        items.push({ y: DOOR.y, fn: () => { const [ix, iy] = iso(DOOR.x, DOOR.y); g.drawImage(A.door, Math.round(ix - 20), Math.round(iy - 44)); } });
+        items.push({ y: 91, fn: () => g.drawImage(A.back, BACK.x, BACK.y) });
+        items.push({ y: 141, fn: () => g.drawImage(A.front, FRONT.x, FRONT.y) });
         for (const d of FROGS.concat([RIBBIT])) {
-          const f = d === RIBBIT ? s.ribbit : s.frogs[d.id], z = f.hop ? Math.sin(Math.PI * Math.min(1, f.hop.t / f.hop.dur)) * 12 : 0;
-          const sp = sprites.frog[d.id][f.hop ? 'hop' : 'sit'], bob = f.hop ? 0 : Math.round(Math.sin(anim * 2 + d.id.length) * 0.4);
+          const f = d === RIBBIT ? s.ribbit : s.frogs[d.id], z = f.hop ? Math.sin(Math.PI * Math.min(1, f.hop.t / f.hop.dur)) * 14 : 0;
+          const sp = A.frog[d.id][f.hop ? 'hop' : 'sit'], bob = f.hop ? 0 : Math.round(Math.sin(anim * 2 + d.id.length) * 0.4);
           items.push({ y: f.y, fn: () => {
-            if (z > 1) { g.globalAlpha = 0.25; g.fillStyle = '#0a2a20'; g.fillRect(Math.round(f.x - 5), Math.round(f.y - 1), 10, 2); g.globalAlpha = 1; }
-            g.drawImage(sp.c, Math.round(f.x - sp.ax), Math.round(f.y - sp.ay - z + bob));
+            if (z > 1) { const [ix, iy] = iso(f.x, f.y); g.fillStyle = pal[M]; g.fillRect(Math.round(ix - 7), Math.round(iy - 1), 14, 2); }
+            put(g, sp, f.x, f.y, z - bob);
             // Ribbit fishes through the rush
-            if (d === RIBBIT && s.phase === 'rush' && !f.hop) { g.fillStyle = '#6a4a2a'; for (let i = 0; i < 9; i++) g.fillRect(Math.round(f.x + 6 + i), Math.round(f.y - 14 - i), 1, 1); g.fillStyle = 'rgba(240,240,240,0.7)'; g.fillRect(Math.round(f.x + 15), Math.round(f.y - 23), 1, 15); }
+            if (d === RIBBIT && s.phase === 'rush' && !f.hop) { const [ix, iy] = iso(f.x, f.y); g.fillStyle = pal[D]; for (let i = 0; i < 12; i++) g.fillRect(Math.round(ix + 8 + i), Math.round(iy - 12 - i), 1, 1); g.fillStyle = pal[L]; g.fillRect(Math.round(ix + 20), Math.round(iy - 24), 1, 20); }
           } });
         }
-        if (s.phase === 'dusk' || s.phase === 'gone') items.push({ y: RAFT.y, fn: () => { const sp = sprites.raft; g.drawImage(sp.c, RAFT.x - sp.ax, RAFT.y - sp.ay + Math.round(Math.sin(anim * 1.4))); } });
+        if (dusk) items.push({ y: RAFT.y, fn: () => { const [ix, iy] = iso(RAFT.x, RAFT.y); g.drawImage(A.raft, Math.round(ix - 30), Math.round(iy - 30 + Math.sin(anim * 1.4))); } });
         items.push({ y: body.y, fn: () => {
-          const pose = goal && path.length ? 'walk' + (Math.floor(s.walked / 5) & 3) : 'stand';
-          const P = Figure.pose(style, pose, s.face < 0);
-          Figure.draw(g, P, body.x, body.y);
+          const going = goal && path.length, step2 = Math.floor(s.walked / 9) & 1, side = s.face < 0 ? 'l' : 'r';
+          const P = (away ? (going && step2 ? A.you.awayWalk : A.you.away) : going && step2 ? A.you.walk : A.you.stand)[side];
+          const [ix, iy] = iso(body.x, body.y), px = Math.round(ix), py = Math.round(iy);
+          Figure.draw(g, P, px, py);
           // the apron, once it's on
-          if (s.phase !== 'arrive') { g.fillStyle = '#f4ecd4'; g.fillRect(Math.round(body.x - 2), Math.round(body.y - 12), 4, 6); g.fillStyle = '#d8ccb0'; g.fillRect(Math.round(body.x - 2), Math.round(body.y - 7), 4, 1); }
+          if (s.phase !== 'arrive' && !away) { g.fillStyle = pal[L]; g.fillRect(px - 1 + s.face, py - 11, 5, 6); g.fillStyle = pal[D]; g.fillRect(px - 1 + s.face, py - 5, 5, 1); }
           // the Lantern: on the belt while the hands are busy, in hand otherwise
-          const L = Figure.lantern(style);
-          if (s.holding || s.cooking) Figure.draw(g, L, body.x - 4 * s.face, body.y - 10);
-          else Figure.draw(g, L, body.x + P.hx, body.y + P.hy);
-          if (s.holding && !(drag && drag.on)) { const [hx, hy] = handAt(); g.drawImage(sprites.dish[s.holding], Math.round(hx - 4), Math.round(hy - 4)); }
+          const L2 = A.you.lantern;
+          if (s.holding || s.cooking) Figure.draw(g, L2, px - 9 * s.face, py - 12);
+          else Figure.draw(g, L2, px + 7 * s.face, py - 11);
+          if (s.holding && !(drag && drag.on)) { const [hx, hy] = handAt(); g.drawImage(A.dish[s.holding], Math.round(hx - 4), Math.round(hy - 4)); }
         } });
-        if (s.fly) items.push({ y: s.fly.y + 30, fn: () => g.drawImage(sprites.fly[(anim * 20 | 0) % 2], Math.round(s.fly.x - 2), Math.round(s.fly.y - 2)) });
+        if (s.fly) items.push({ y: s.fly.y + 30, fn: () => { const [ix, iy] = iso(s.fly.x, s.fly.y, FLY_Z); g.drawImage(A.fly[(anim * 20 | 0) % 2], Math.round(ix - 2), Math.round(iy - 2)); } });
         items.sort((a, b) => a.y - b.y);
         for (const it of items) it.fn();
         // steam over the pot, and how far the cooking's got
-        for (const p of steam) { g.globalAlpha = 0.5 * (1 - p.t); g.fillStyle = '#ffffff'; g.fillRect(Math.round(p.x), Math.round(p.y), 2, 2); }
-        g.globalAlpha = 1;
-        if (s.cooking) { const st = STATIONS.find((q) => q.id === s.cooking.at); g.fillStyle = '#2a2a1e'; g.fillRect(st.x - 8, st.y - 18, 16, 3); g.fillStyle = '#f4c84a'; g.fillRect(st.x - 8, st.y - 18, Math.round(16 * (1 - s.cooking.t / 1.1)), 3); }
+        g.fillStyle = pal[L];
+        for (const p of steam) { const [ix, iy] = iso(p.x, p.y, p.z); g.fillRect(Math.round(ix), Math.round(iy), 2, 2); }
+        if (s.cooking) { const st = STATIONS.find((q) => q.id === s.cooking.at), [ix, iy] = iso(st.x, st.y, 34); g.fillStyle = pal[D]; g.fillRect(Math.round(ix - 8), Math.round(iy), 16, 3); g.fillStyle = pal[O]; g.fillRect(Math.round(ix - 8), Math.round(iy), Math.round(16 * (1 - s.cooking.t / 1.1)), 3); }
         // the bubbles: what each frog wants once you've asked (a ghost of their usual
         // if you've learned it), and how long they'll wait
         for (const d of FROGS) {
           const f = s.frogs[d.id];
           if (f.st !== 'waiting') continue;
-          const k = d.mayor ? null : Math.max(0, 1 - f.wait / patience(d.id));
-          bubble(g, Math.round(f.x), Math.round(f.y - 26), f.ordered ? f.want : null, k, !f.ordered);
-          if (!f.ordered && s.learned[d.id]) { g.globalAlpha = 0.5; g.drawImage(sprites.dish[s.learned[d.id]], Math.round(f.x + 8), Math.round(f.y - 36)); g.globalAlpha = 1; }
+          const k = d.mayor ? null : Math.max(0, 1 - f.wait / patience(d.id)), [ix, iy] = iso(f.x, f.y);
+          bubble(g, A, pal, Math.round(ix), Math.round(iy - 30), f.ordered ? f.want : null, k, !f.ordered);
+          if (!f.ordered && s.learned[d.id]) { g.globalAlpha = 0.5; g.drawImage(A.dish[s.learned[d.id]], Math.round(ix + 8), Math.round(iy - 40)); g.globalAlpha = 1; }
         }
-        if (drag && drag.on && s.holding) { g.globalAlpha = 0.85; g.drawImage(sprites.dish[s.holding], Math.round(drag.x - 4), Math.round(drag.y - 4)); g.globalAlpha = 1; }
-        // the light: flat and bright by day; gold, then violet, at dusk, with the lanterns lit
+        if (drag && drag.on && s.holding) { g.globalAlpha = 0.85; g.drawImage(A.dish[s.holding], Math.round(drag.x - 4), Math.round(drag.y - 4)); g.globalAlpha = 1; }
+        // the stall's lanterns, lit at dusk
+        if (dusk) { g.fillStyle = pal[L]; for (const [x, y] of [[106, 94], [270, 94]]) { const [ix, iy] = iso(x, y, 44); g.fillRect(Math.round(ix) - 2, Math.round(iy), 5, 6); } }
         g.setTransform(1, 0, 0, 1, 0, 0);
-        if (s.dusk > 0) {
-          const gr = g.createLinearGradient(0, 0, 0, vh);
-          gr.addColorStop(0, `rgba(150,110,190,${0.6 * s.dusk})`); gr.addColorStop(1, `rgba(255,170,90,${0.55 * s.dusk})`);
-          g.globalCompositeOperation = 'multiply'; g.fillStyle = gr; g.fillRect(0, 0, vw, vh); g.globalCompositeOperation = 'source-over';
-          const ox = -Math.round(cam.x), oy = -Math.round(cam.y);
-          for (const [lx, ly] of [[116, 60], [262, 60], [RAFT.x + 8, RAFT.y - 16]]) Figure.halo(g, lx + ox, ly + oy, 26, 'rgba(255,190,110,', 0.4 * s.dusk);
-          Figure.halo(g, body.x + ox, body.y - 10 + oy, 30, 'rgba(255,200,120,', 0.35 * s.dusk);
-          g.fillStyle = '#ffd27a'; for (const [lx, ly] of [[116, 60], [262, 60]]) g.fillRect(lx + ox - 1, ly + oy - 2, 3, 4);
-        }
       }
 
       // ---- the tests' player: taps and drags, as a thumb would ----
@@ -619,25 +645,25 @@
         if (botCD-- > 0) return null;
         botCD = 8;
         if (goal || s.cooking || later) return null;
-        const tap = (x, y) => { ctx.pad.push({ kind: 'down', x: x - cam.x, y: y - cam.y }); ctx.pad.push({ kind: 'up', x: x - cam.x, y: y - cam.y, tap: true }); };
-        const dragTo = (x, y) => { const [hx, hy] = handAt(); ctx.pad.push({ kind: 'down', x: hx - cam.x, y: hy - cam.y }); ctx.pad.push({ kind: 'move', x: (hx + x) / 2 - cam.x, y: (hy + y) / 2 - cam.y }); ctx.pad.push({ kind: 'up', x: x - cam.x, y: y - cam.y, tap: false }); };
-        if (s.phase === 'arrive') { tap(s.ribbit.x, s.ribbit.y - 6); return null; }
-        if (s.phase === 'dusk') { tap(RAFT.x, RAFT.y - 8); return null; }
+        const tap = (x, y, z = 0) => { const [ix, iy] = iso(x, y, z); ctx.pad.push({ kind: 'down', x: ix - cam.x, y: iy - cam.y }); ctx.pad.push({ kind: 'up', x: ix - cam.x, y: iy - cam.y, tap: true }); };
+        const dragTo = (x, y, z = 0) => { const [hx, hy] = handAt(), [ix, iy] = iso(x, y, z); ctx.pad.push({ kind: 'down', x: hx - cam.x, y: hy - cam.y }); ctx.pad.push({ kind: 'move', x: (hx + ix) / 2 - cam.x, y: (hy + iy) / 2 - cam.y }); ctx.pad.push({ kind: 'up', x: ix - cam.x, y: iy - cam.y, tap: false }); };
+        if (s.phase === 'arrive') { tap(s.ribbit.x, s.ribbit.y, 9); return null; }
+        if (s.phase === 'dusk') { tap(RAFT.x, RAFT.y, 6); return null; }
         if (s.phase !== 'rush') return null;
-        if (s.fly && !s.fly.leaving && !s.horace) { tap(s.fly.x, s.fly.y); return null; }
+        if (s.fly && !s.fly.leaving && !s.horace) { tap(s.fly.x, s.fly.y, FLY_Z); return null; }
         const waiting = FROGS.filter((d) => s.frogs[d.id].st === 'waiting');
         const mayor = waiting.find((d) => d.mayor);
-        if (mayor && !world.fact('flyOrdered')) { tap(s.frogs.mayor.x, s.frogs.mayor.y - 6); return null; }
+        if (mayor && !world.fact('flyOrdered')) { tap(s.frogs.mayor.x, s.frogs.mayor.y, 9); return null; }
         const wantOf = (d) => (d.mayor ? (s.horace ? s.frogs.mayor.want : null) : knownWant(d.id));
         if (s.holding) {
           const to = waiting.find((d) => wantOf(d) === s.holding) || (s.holding === 'fly' ? mayor : null);
-          if (to) { const f = s.frogs[to.id]; dragTo(f.x, f.y - 6); return null; }
+          if (to) { const f = s.frogs[to.id]; dragTo(f.x, f.y, 9); return null; }
         }
         // cook for someone whose want is known (a regular served before they ask), else take an order
         const known = waiting.find((d) => wantOf(d) && wantOf(d) !== 'fly');
-        if (known) { const st = STATIONS.find((q) => q.dish === wantOf(known)); tap(st.x, st.y); return null; }
+        if (known) { const st = STATIONS.find((q) => q.dish === wantOf(known)); tap(st.x, st.y, 20); return null; }
         const ask = waiting.find((d) => !d.mayor && !s.frogs[d.id].ordered);
-        if (ask) { tap(s.frogs[ask.id].x, s.frogs[ask.id].y - 6); return null; }
+        if (ask) { tap(s.frogs[ask.id].x, s.frogs[ask.id].y, 9); return null; }
         if (Math.hypot(body.x - 190, body.y - 108) > 10) goTo(190, 108, { kind: 'walk' });
         return null;
       }

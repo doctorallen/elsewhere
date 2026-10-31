@@ -1,11 +1,11 @@
 # Mrs. Pell's cat
 
-The first distraction, thirty seconds down the Lantern Road. A brick terrace, side-on, late on a warm afternoon, in flat pixel art; then the house at number nine, which has no floor.
+The first distraction, thirty seconds down the Lantern Road. A brick terrace on the isometric grid, late on a warm afternoon, running off past both ends of the frame; then the house at number nine, which has no floor.
 
 | Part | |
 | --- | --- |
 | **The ask** | "My cat's on the roof. Would you mind?" Mrs. Pell, on her doorstep, as you arrive |
-| **The world** | A terrace of four houses (three, five, seven and nine), slate roofs, a dormer, a taller roof at seven, an alley with washing across it, Mr. Dunmore's roses, a sky going gold. Flat `Tycho.paint.Pix` throughout, with a parallax sky, clouds and the roofs of the streets behind |
+| **The world** | A terrace of four houses (three, five, seven and nine), slate roofs, a dormer, a taller roof at seven, an alley with washing across it, Mr. Dunmore's roses, a sky going gold. Painted with `Ink` in eight inks; the runner's side-on plane is laid along the front of the houses, so climbing and falling are unchanged. The house with no floor is the one place in the game that's meant to float |
 | **The play** | Climb: a drainpipe to the gutters, a jump over the dormer, up onto seven, across the alley (or onto the washing line), on the platform runner. Stick and Jump, Use to talk |
 | **The people** | Mrs. Pell, Mr. Dunmore next door (who hates the cat), and Pip on the step of seven (who knows where it goes), in a Tyrell world of their own, talking through Voice |
 | **The turn** | Biscuit drops through the skylight of number nine, which has no floor: a wardrobe, a bed, a staircase, a rug with an armchair and a clock, a dresser, a table, all hanging in the dark |

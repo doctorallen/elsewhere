@@ -38,5 +38,5 @@ for f in quests/*/*.js; do
 done
 
 # painting and generation are seeded: Math.random and the clock never
-if grep -nE 'Math\.random|Date\.now' js/figure.js js/view.js quests/*/*.js | grep -v '^\s*//'; then echo "painting and generation must be seeded (Tycho.seed, ctx.rng), never Math.random or the clock"; exit 1; fi
+if grep -nE 'Math\.random|Date\.now' js/ink.js js/figure.js js/view.js quests/*/*.js | grep -v '^\s*//'; then echo "painting and generation must be seeded (Tycho.seed, ctx.rng), never Math.random or the clock"; exit 1; fi
 echo "check: ok"

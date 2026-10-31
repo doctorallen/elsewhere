@@ -5,7 +5,7 @@
 | Part | |
 | --- | --- |
 | **The ask** | Old Aster, dying: carry the Lantern east along the Road to the Spire, and don't let anything turn you aside |
-| **The world** | Three scenes, side-on, soft painterly strokes. A dusk sky with the Hollow in it, a vast hooded shape, and seven lights on the hills going out one by one. A stone room at night, lit by a fire. The Lantern Road, with the Spire on the far horizon and the Hollow's wisps at the edges of the screen |
+| **The world** | Three scenes in the house style, the Road on the isometric grid with a fixed band of dusk behind the land (the plane of the side-on runner is laid along the Road, so walking and jumping are unchanged). A dusk sky with the Hollow in it, a vast hooded shape, and seven lights on the hills going out one by one. A stone room at night, lit by a fire. The Lantern Road, with the Spire on the far horizon and the Hollow's wisps at the edges of the screen |
 | **The play** | Walk and jump on Tycho's platform runner, and listen. The stick and Jump, the Use button for Aster and the door |
 | **The people** | Aster and Mrs. Pell, in one Tyrell world, talking through Voice |
 | **The turn** | Mrs. Pell, on her doorstep: "My cat's on the roof. Would you mind?" |

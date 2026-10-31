@@ -7,168 +7,136 @@
 //          gives you the Lantern, the map and the mission; the log opens
 //   road   the Lantern Road, a screen and a half of it, east toward the
 //          Spire, the Hollow at the edges; then a woman on a doorstep
+// The Road is on the isometric grid, the land running off past the frame and a
+// band of dusk fixed behind it, with the Hollow in it; the walking and jumping
+// are the side-on runner's, its plane laid along the grid.
 // Nothing here is in on the joke. It ends at Mrs. Pell's doorstep: the
 // handoff 'doorstep' starts her quest. The Road is kept as it is, because the
 // ending comes back to it (one screen and a half along, her door behind you).
 // ---------------------------------------------------------------------------
 (() => {
   const { clamp } = Tycho.math;
-  const { noise, hash } = Tycho.seed;
-  const { rampOf } = Tycho.color;
-  // the player in the epic's style: soft, painterly, outlined dark
-  const STYLE = { key: 'road', h: 24, flat: false, line: true, ink: '#0a0810' };
   const NUM = { w: 8, h: 22, speed: 80, walk: 46, accel: 900, airAccel: 600, friction: 1200, jump: 212, gravity: 700, maxFall: 380, coyote: 0.1, climb: 50 };
   // the world's height, the ground, the scenes' widths
   const H = 200, GROUND = 170, ROAD_W = 600, ROOM_W = 430;
   // where things are
   const ASTER_X = 262, STOOL_X = 308, ROOM_DOOR = 404, PELL_X = 512, PELL_STOP = 470;
-  const R = (hexes, n = 8, deep = 0.5, high = 0.25) => rampOf(hexes, n, deep, high);
 
-  // ---- painting ------------------------------------------------------------
-  // the dusk sky: deep violet at the top, ember at the horizon, slow clouds
-  function paintSky(w, h, seed, hor = 0.82) {
-    const P = new Tycho.paint.Pix(w, h);
-    const SKY = R(['#0c0a1c', '#2a1e48', '#5e3460', '#b45a48', '#e8a060'], 12, 0.4, 0.2);
-    P.area(0, 0, w - 1, h - 1, SKY, (x, y) => clamp(y / (h * hor) + (noise(x / 60, y / 14, seed) - 0.5) * 0.18, 0, 1), { seed });
-    // long thin clouds lit from below
-    for (let y = 20; y < h * 0.7; y++) for (let x = 0; x < w; x++) {
-      const c = noise(x / 90, y / 6, seed + 9) - 0.62 + (y / h) * 0.1;
-      if (c > 0) P.tint(x, y, [232, 150, 110], Math.min(0.5, c * 2.2) * (y / h));
-    }
-    return P.canvases().c;
+  // ---- the view: the Road on the 2:1 grid ---------------------------------
+  // The rules are the runner's own, side-on: x along the Road, y up and down.
+  // The picture lays that plane along the grid, so x runs off down the Road
+  // and height is height; `y` here is only how far across the Road a thing is.
+  const K = 0.7;
+  const at = (x, y, z = 0) => [(x - y) * K, (x + y) * K / 2 - z];
+  // where the land stops and the sky starts, in the view's pixels
+  const HORIZON = 62;
+  const GX = -280, GY = -190, GW = 960, GH = 560;
+
+  // ---- the eight inks: dusk on the Road, and firelight in Aster's room ----
+  const D = 0, M = 1, P = 2, O = 3, L = 4, G = 5, V = 6, B = 7;
+  const DUSK = ['#1a1030', '#6a2a6a', '#a83c6a', '#e0683c', '#ffd890', '#3d7a52', '#8fbf6a', '#3f5fa8'];
+  const FIRE = ['#0c0a14', '#3a3448', '#a83a32', '#f08030', '#fff0c8', '#6a5e70', '#7a4c2c', '#3f5fa8'];
+  const LOOK = { k: D, h: O, H: P, s: L, c: B, C: M, r: P, l: M, g: O, G: L };
+
+  const HOLLOW = [[160, 6], [184, 14], [180, 44], [176, 58], [216, 52], [272, 80], [282, 100], [224, 72], [188, 88], [192, 128], [128, 128], [132, 88], [96, 72], [38, 100], [48, 80], [104, 52], [144, 58], [140, 44], [136, 14]];
+  // the dusk in flat bands, each breaking up into the next in rows of fat dots
+  function paintDusk(S, h) {
+    const w = S.w, dots = (y, n, c, step = 8) => { for (let j = 0; j < n; j += 4) for (let x = (j & 4 ? step / 2 : 0); x < w; x += step) S.rect(x, y + j, 2, 2, c); };
+    [[0, D], [0.08, M], [0.26, P], [0.43, O], [0.6, L]].forEach(([k, c]) => S.rect(0, Math.round(h * k), w, h, c));
+    dots(Math.round(h * 0.08), 8, D); dots(Math.round(h * 0.22), 6, P); dots(Math.round(h * 0.39), 6, O); dots(Math.round(h * 0.56), 6, L);
   }
-  // far mountains and, at the far right, the Spire: a needle, its lamp dark
-  function paintMountains(w, h, seed) {
-    const P = new Tycho.paint.Pix(w, h), M = R(['#1a1428', '#3a2c48', '#6a4a5a'], 7, 0.4, 0.1);
-    const ridge = (x) => 96 + noise(x / 70, 0.5, seed) * 46 + noise(x / 20, 3.5, seed) * 8;
-    P.area(0, 60, w - 1, h - 1, M, (x, y) => clamp(0.15 + (y - ridge(x)) / 160 + (noise(x / 9, y / 9, seed) - 0.5) * 0.15, 0, 0.7), { inside: (x, y) => y > ridge(x), seed, fog: 0.35, fogc: [120, 70, 90] });
-    const sx = Math.round(w * 0.86), top = 28;
-    P.area(sx - 4, top, sx + 4, 140, M, (x, y) => (x < sx ? 0.25 : 0.12) + (y - top) / 600, { inside: (x, y) => Math.abs(x - sx) <= 1 + (y - top) / 26, seed: seed + 1, fog: 0.25, fogc: [120, 70, 90] });
-    return P.canvases().c;
+  // the cold open, a painted card: the sky, and the Hollow a sheet of its own so it can come on
+  function paintColdSky() {
+    const S = new Ink.Sheet(560, 200); paintDusk(S, 180);
+    [[60, 36, 74], [420, 58, 80], [104, 88, 54]].forEach(([x, y, w]) => { S.rect(x, y, w, 5, L); S.rect(x + 8, y - 3, w - 26, 3, L); S.rect(x + 4, y + 5, w - 8, 1, O); });
+    return S;
   }
-  // near hills with dark trees
-  function paintHills(w, h, seed) {
-    const P = new Tycho.paint.Pix(w, h), G = R(['#141c18', '#24342a', '#3e5236', '#6a7a48'], 8, 0.5, 0.15), T = R(['#0c1210', '#1c2a22', '#2e4030'], 6, 0.5, 0.1);
-    const ridge = (x) => 126 + noise(x / 50, 1.5, seed) * 26;
-    P.area(0, 90, w - 1, h - 1, G, (x, y) => clamp(0.65 - (y - ridge(x)) / 120 + (noise(x / 12, y / 6, seed) - 0.5) * 0.2, 0, 1), { inside: (x, y) => y > ridge(x), seed });
-    for (let i = 0; i < 18; i++) {
-      const tx = hash(i, 3, seed) % w, ty = ridge(tx) + 4, th = 14 + (hash(i, 5, seed) % 16);
-      P.area(tx - 8, ty - th, tx + 8, ty, T, (x, y) => 0.3 + (x < tx ? 0.25 : 0) - ((y - ty + th) / th) * 0.2, { inside: (x, y) => Math.abs(x - tx) < (y - ty + th) * 0.45, seed: seed + i });
-    }
-    return P.canvases().c;
+  function paintHollow() { const S = new Ink.Sheet(320, 150); S.poly(Ink.curve(HOLLOW), D); return S; }
+  function paintColdLand() {
+    const S = new Ink.Sheet(560, 200), R2 = new Tycho.seed.Rng(8);
+    const ridge = Ink.curve([[-10, 136], [90, 122], [190, 130], [290, 124], [390, 132], [470, 122], [570, 134], [570, 160], [-10, 160]], false);
+    S.poly([[470, 58], [475, 58], [478, 96], [482, 96], [486, 134], [462, 134], [466, 96], [470, 96]], D);
+    S.poly(ridge, M); S.path(ridge.slice(0, 48), D);
+    S.rect(0, 148, 560, 52, V); S.rect(0, 148, 560, 1, D); S.rect(0, 149, 560, 2, G);
+    for (let i = 0; i < 24; i++) S.tuft(R2.f(0, 556), R2.f(156, 198), G);
+    S.orect(-2, 166, 564, 15, L); for (let x = 30; x < 560; x += 72) S.rect(x, 172, 10, 1, O);
+    const tree = (x, y) => { S.rect(x - 1, y - 6, 3, 6, D); S.opoly([[x - 11, y - 5], [x, y - 20], [x + 11, y - 5]], G); S.opoly([[x - 8, y - 14], [x, y - 28], [x + 8, y - 14]], G); };
+    [[64, 166], [86, 158], [410, 162], [510, 164]].forEach(([x, y]) => tree(x, y));
+    return S;
   }
-  // the road itself: the grass bank, the beaten road, the stream, the stones,
-  // the milestone, and Mrs. Pell's cottage at the end of it
-  function paintRoad(seed) {
-    const P = new Tycho.paint.Pix(ROAD_W, H);
-    const GRASS = R(['#1e2e1c', '#34502c', '#5a7a3a', '#8aa050'], 9, 0.5, 0.2), DIRT = R(['#2a1e16', '#5a4430', '#8a6a48', '#b0905e'], 9, 0.5, 0.2);
-    const STONE = R(['#26222a', '#4a4650', '#7a7480', '#a8a0a0'], 8, 0.5, 0.2), WATER = R(['#0e1830', '#1e3858', '#3a6a88', '#8ab0c0'], 8, 0.4, 0.2);
-    // grass behind the road
-    P.area(0, GROUND - 22, ROAD_W - 1, GROUND - 1, GRASS, (x, y) => clamp(0.35 + (noise(x / 7, y / 3, seed) - 0.5) * 0.5 - (GROUND - y) / 60, 0, 1), { seed });
-    // the road: packed earth, ruts
-    P.area(0, GROUND, ROAD_W - 1, H - 1, DIRT, (x, y) => clamp(0.55 - (y - GROUND) / 70 + (noise(x / 10, y / 2, seed + 2) - 0.5) * 0.35 + ((y - GROUND) % 9 === 3 ? -0.15 : 0), 0, 1), { seed: seed + 2, inside: (x) => x < 250 || x > 290 });
-    // the stream, its bed, a stepping stone
-    P.area(250, GROUND + 8, 290, H - 1, WATER, (x, y) => clamp(0.45 + (noise(x / 6, y / 2, seed + 3) - 0.5) * 0.5 - (y - GROUND) / 90, 0, 1), { seed: seed + 3 });
-    P.area(250, GROUND, 290, GROUND + 7, DIRT, (x, y) => 0.25 + (y - GROUND) / 40, { seed: seed + 4 });
-    P.block(264, GROUND + 6, 276, GROUND + 18, STONE, { base: 0.55 });
-    // boulders and a fallen log
-    P.area(118, GROUND - 12, 140, GROUND, STONE, (x, y) => clamp(0.7 - (y - GROUND + 12) / 18 - (x - 118) / 60, 0, 1), { inside: (x, y) => ((x - 129) * (x - 129)) / 121 + ((y - GROUND) * (y - GROUND)) / 144 < 1, seed: seed + 5 });
-    P.area(178, GROUND - 6, 194, GROUND, STONE, (x, y) => 0.5 - (y - GROUND + 6) / 20, { inside: (x, y) => ((x - 186) * (x - 186)) / 64 + ((y - GROUND) * (y - GROUND)) / 36 < 1, seed: seed + 6 });
-    const BARK = R(['#1e140e', '#3e2a1c', '#6a4a30'], 7, 0.5, 0.15);
-    P.area(358, GROUND - 13, 394, GROUND, BARK, (x, y) => clamp(0.7 - Math.abs(y - (GROUND - 7)) / 9 + (x % 7 === 0 ? -0.2 : 0), 0, 1), { seed: seed + 7 });
-    // the milestone: a worn stone, a carved arrow east
-    P.block(214, GROUND - 22, 224, GROUND, STONE, { base: 0.5 });
-    for (let i = 0; i < 5; i++) P.put(216 + i, GROUND - 14, [40, 36, 44]);
-    P.put(219, GROUND - 15, [40, 36, 44]); P.put(219, GROUND - 13, [40, 36, 44]);
-    // the cottage: whitewashed, a slate roof, a red door with a step
-    const WALL = R(['#4a4440', '#8a8078', '#c8beb0', '#e8e0d0'], 8, 0.5, 0.2), SLATE = R(['#1a1a24', '#2e2e3e', '#4a4a5e'], 6, 0.5, 0.15), DOOR = R(['#3a1010', '#7a2a22', '#a84a36'], 6, 0.5, 0.2);
-    P.block(470, GROUND - 64, 592, GROUND, WALL, { base: 0.55 });
-    P.area(462, GROUND - 100, 600, GROUND - 62, SLATE, (x, y) => clamp(0.3 + ((y - GROUND) % 5 === 0 ? -0.2 : 0) + (noise(x / 4, y, seed) - 0.5) * 0.3, 0, 1), { inside: (x, y) => y > GROUND - 100 + Math.abs(x - 531) * 0.55, seed: seed + 8 });
-    P.block(560, GROUND - 118, 572, GROUND - 82, STONE, { base: 0.4 });
-    P.block(500, GROUND - 40, 518, GROUND - 2, DOOR, { base: 0.5 });
-    P.block(496, GROUND - 3, 522, GROUND + 1, STONE, { base: 0.6 });
-    // a window, lit warm from inside
-    P.area(540, GROUND - 44, 562, GROUND - 26, R(['#5a3010', '#c88030', '#ffd080'], 6), (x, y) => (x === 551 || y === GROUND - 35 ? 0.1 : 0.7), { glow: 0.45, seed: seed + 9 });
-    return P.canvases();
+  // the strip of sky over the Road: the dusk, the Hollow small and far, the Spire, the hills
+  function paintSkyStrip() {
+    const S = new Ink.Sheet(600, HORIZON + 10); S.rect(0, 0, 600, S.h, L); paintDusk(S, HORIZON + 4);
+    S.poly(Ink.curve(HOLLOW.map(([x, y]) => [300 + (x - 160) * 0.5, y * 0.5 + 1])), D); S.rect(291, 14, 4, 2, L); S.rect(305, 14, 4, 2, L);
+    S.poly([[470, 10], [473, 10], [475, 34], [478, 34], [480, 62], [464, 62], [467, 34], [469, 34]], D);
+    const ridge = Ink.curve([[-10, HORIZON - 6], [90, HORIZON - 14], [190, HORIZON - 8], [290, HORIZON - 14], [390, HORIZON - 8], [490, HORIZON - 14], [610, HORIZON - 8], [610, HORIZON + 12], [-10, HORIZON + 12]], false);
+    S.poly(ridge, M); S.path(ridge.slice(0, 48), D); S.rect(0, HORIZON, 600, 1, D); S.rect(0, HORIZON + 1, 600, 2, G); S.rect(0, HORIZON + 3, 600, 7, V);
+    return S;
   }
-  // the stone room: a hearth, a window, the cot, the stool, the door
-  function paintRoom(seed) {
-    const P = new Tycho.paint.Pix(ROOM_W, H);
-    const WALL = R(['#141018', '#2c2630', '#4a4048', '#6a5e60'], 9, 0.5, 0.15), WOOD = R(['#1a120c', '#3a2818', '#5e4228', '#806040'], 8, 0.5, 0.15);
-    P.area(0, 0, ROOM_W - 1, GROUND - 1, WALL, (x, y) => {
-      const row = Math.floor(y / 11), sx = (x + (row % 2) * 9) % 18, joint = y % 11 === 0 || sx === 0;
-      return clamp(0.4 + (hash(Math.floor((x + (row % 2) * 9) / 18), row, seed) % 100) / 400 + (joint ? -0.3 : 0), 0, 1);
-    }, { seed });
-    P.area(0, GROUND, ROOM_W - 1, H - 1, WOOD, (x, y) => clamp(0.5 - (y - GROUND) / 60 + ((x + (y - GROUND) * 7) % 23 === 0 ? -0.3 : 0), 0, 1), { seed: seed + 1 });
+  // the land: the beaten Road across it, the stream through it, its stones and the fallen log
+  function paintLand() {
+    const S = new Ink.Sheet(GW, GH); S.ox = GX; S.oy = GY; S.rect(GX, GY, GW, GH, V);
+    const I = new Ink.Iso(S, at), R2 = new Tycho.seed.Rng(6);
+    for (let i = 0; i < 180; i++) S.tuft(R2.f(GX, GX + GW), R2.f(GY, GY + GH), G);
+    I.top(-400, -12, 1200, 24, 0, L);
+    for (let x = -390; x < 800; x += 62) I.line(x, -4, 0, x + 16, -4, 0, O), I.line(x + 26, 5, 0, x + 40, 5, 0, O);
+    // the stream: a channel you can fall in, a stone to step on
+    I.top(250, -400, 40, 800, -12, B); I.right(250, -400, -12, 800, 12, M);
+    for (let y = -390; y < 400; y += 34) I.line(258 + (y & 15), y, -12, 268 + (y & 15), y, -12, M);
+    I.box(264, -8, -12, 12, 16, 6, [G, M, D]);
+    I.box(120, -7, 0, 18, 14, 11, [G, M, D]); I.box(180, -6, 0, 12, 12, 5, [G, M, D]);
+    I.box(360, -8, 0, 32, 16, 12, [O, M, D]); for (const y of [-3, 3]) I.line(360, y, 12, 392, y, 12, D);
+    // the milestone, a carved arrow east
+    I.box(214, -24, 0, 8, 6, 22, [L, G, M]); I.line(215, -18, 13, 221, -18, 13, D);
+    return S;
+  }
+  // what stands up out of the land (drawn apart, so the sky never cuts it)
+  function paintTree() {
+    const S = new Ink.Sheet(24, 32), x = 12, y = 31;
+    S.rect(x - 1, y - 6, 3, 7, D); S.opoly([[x - 11, y - 5], [x, y - 20], [x + 11, y - 5]], G); S.opoly([[x - 8, y - 14], [x, y - 28], [x + 8, y - 14]], G);
+    return S;
+  }
+  function paintPost() { const S = new Ink.Sheet(8, 18); S.rect(3, 4, 2, 14, D); S.rect(1, 1, 6, 4, D); return S; }
+  const COT = { x: 320, y: 30, w: 190, h: 210 };
+  function paintCottage() {
+    const S = new Ink.Sheet(COT.w, COT.h); S.ox = COT.x; S.oy = COT.y;
+    const I = new Ink.Iso(S, at), x = 470, y = -60, w = 122, d = 46, h = 44;
+    I.box(x, y, 0, w, d, h, [L, L, O]);
+    I.left(500, -14, 0, 18, 32, P); I.left(540, -14, 16, 22, 15, O); I.line(551, -14, 16, 551, -14, 31, D); I.line(540, -14, 23, 562, -14, 23, D); I.left(478, -14, 16, 14, 15, O);
+    I.box(496, -13, 0, 26, 6, 2, [L, O, M]);
+    S.opoly([at(x + w, y, h), at(x + w, y + d, h), at(x + w, y + d / 2, h + 22)], O);
+    S.opoly([at(x, y + d, h), at(x + w, y + d, h), at(x + w, y + d / 2, h + 22), at(x, y + d / 2, h + 22)], M);
+    for (const k of [0.33, 0.66]) I.line(x, y + d - d / 2 * k, h + 22 * k, x + w, y + d - d / 2 * k, h + 22 * k, D);
+    I.box(560, -42, h + 12, 10, 8, 18, [O, P, D]);
+    return S;
+  }
+  // Aster's room, cut away: the far wall along the room, the hearth, the window, the cot, the stool, the door
+  const ROOM = { x: -120, y: -110, w: 460, h: 340 }, WALK_Y = 70;
+  function paintRoom() {
+    const S = new Ink.Sheet(ROOM.w, ROOM.h); S.ox = ROOM.x; S.oy = ROOM.y;
+    const I = new Ink.Iso(S, at), R2 = new Tycho.seed.Rng(4);
+    I.box(0, 0, -6, 430, 110, 6, [V, M, D]);
+    for (let y = 22; y < 110; y += 22) I.line(0, y, 0, 430, y, 0, D);
+    I.left(0, 0, 0, 430, 74, M); I.right(0, 0, 0, 110, 74, G);
+    for (let i = 0; i < 26; i++) { const x = R2.f(8, 410), z = R2.f(8, 64); I.line(x, 0, z, x + 14, 0, z, D); I.line(x + 7, 0, z + 6, x + 21, 0, z + 6, D); }
+    I.top(-3, -3, 436, 3, 74, G); I.top(-3, -3, 3, 116, 74, G);
     // the hearth, a black mouth in the stone
-    P.block(14, GROUND - 62, 96, GROUND, WALL, { base: 0.55 });
-    P.area(30, GROUND - 38, 80, GROUND - 1, R(['#060406', '#140c0c', '#2a1610']), (x, y) => (y - GROUND + 38) / 60, { seed: seed + 2 });
-    // the window: night, a moon's light
-    P.area(170, 44, 206, 92, R(['#0a1428', '#1a2c50', '#4a6a9a']), (x, y) => (x === 188 || y === 68 ? 0.05 : 0.45 + (y - 44) / 200), { seed: seed + 3, glow: 0.15 });
-    // the cot and the stool
-    P.block(234, GROUND - 14, 298, GROUND - 8, WOOD, { base: 0.55 });
-    P.block(236, GROUND - 8, 240, GROUND, WOOD, { base: 0.35 });
-    P.block(292, GROUND - 8, 296, GROUND, WOOD, { base: 0.35 });
-    P.block(302, GROUND - 16, 316, GROUND - 12, WOOD, { base: 0.6 });
-    P.block(304, GROUND - 12, 307, GROUND, WOOD, { base: 0.35 });
-    P.block(311, GROUND - 12, 314, GROUND, WOOD, { base: 0.35 });
-    // the door: an arch of planks
-    P.area(390, GROUND - 56, 420, GROUND - 1, WOOD, (x, y) => clamp(0.45 + ((x - 390) % 6 === 0 ? -0.25 : 0), 0, 1), { inside: (x, y) => y > GROUND - 56 + 15 - Math.sqrt(Math.max(0, 225 - (x - 405) * (x - 405))), seed: seed + 4 });
-    return P.canvases();
+    I.box(14, 0, 0, 82, 12, 52, [G, G, D]); I.left(30, 12, 0, 50, 30, D);
+    // the window: night outside
+    I.left(170, 0, 30, 36, 28, B); I.line(188, 0, 30, 188, 0, 58, D); I.line(170, 0, 44, 206, 0, 44, D);
+    // the cot, its pillow, the blanket; the stool; the door
+    I.box(234, 8, 0, 64, 24, 8, [G, M, D]); I.box(234, 10, 8, 12, 20, 3, [L, G, D]); I.box(248, 8, 8, 50, 24, 4, [P, P, D]);
+    I.box(308, 14, 0, 14, 10, 14, [G, M, D]);
+    I.left(390, 0, 0, 30, 54, V); for (const x of [398, 406, 414]) I.line(x, 0, 0, x, 0, 54, D);
+    return S;
   }
-  // the Hollow over the sky: something vast and hooded, reaching
-  function paintHollow(w, h) {
-    const [c, g] = Tycho.sprite.canvas(w, h), [e, eg] = Tycho.sprite.canvas(w, h);
-    g.fillStyle = '#07050c';
-    const blob = (x, y, r) => { g.beginPath(); g.arc(x, y, Math.max(1, r), 0, Math.PI * 2); g.fill(); };
-    const cx = w / 2;
-    for (let i = 0; i < 60; i++) { const t = i / 59, x = cx + Math.sin(t * 5.5) * 10, y = h * 0.95 - t * h * 0.62; blob(x, y, 30 - t * 14 + Math.sin(t * 9) * 3); }
-    blob(cx, h * 0.3, 22); blob(cx - 10, h * 0.24, 14); blob(cx + 12, h * 0.25, 13);
-    for (const s of [-1, 1]) for (let i = 0; i < 70; i++) { const t = i / 69; blob(cx + s * (20 + t * w * 0.42), h * 0.52 - Math.sin(t * Math.PI) * 30 + t * 40, 12 * (1 - t) + 2); }
-    eg.fillStyle = '#b070ff';
-    for (const [x, y] of [[cx - 8, h * 0.3], [cx + 6, h * 0.3]]) { eg.fillRect(Math.round(x), Math.round(y), 3, 1); eg.fillRect(Math.round(x) + 1, Math.round(y) - 1, 1, 3); }
-    return { c, e };
-  }
-  // Aster on the cot: an old face in a white beard, a red blanket
-  function paintAster(gone) {
-    const S = Tycho.sprite.Shapes.soft(70, 24, 11, { ink: [10, 8, 16] }); S.line = true;
-    const blanket = R(['#3a1418', '#7a2a2a', '#a84a3e'], 6), skin = Figure.ramp(gone ? '#b8a8a0' : '#d8a888'), hair = Figure.ramp('#d8d4cc');
-    S.ax = 35; S.ay = 23;
-    S.ell(12, 12, 6, 5, R(['#8a8478', '#c8c0b0', '#eee8dc'], 5)); S.part(); // the pillow
-    S.shape([[18, 10], [66, 10], [68, 22], [16, 22]], blanket, { down: 0.4, folds: 3 }); S.part();
-    S.ell(15, 11, 5, 4.5, skin); S.part(false);
-    S.ell(13, 8, 5, 3, hair); S.ell(19, 14, 3.4, 3, hair); S.part(false);
-    if (!gone) { S.px(17, 10, [30, 20, 24]); S.cap(22, 15, 30, 18, 1.4, 1.3, skin); }
-    return S.done();
-  }
-  // Mrs. Pell in the epic's style: a gray bun, a lilac cardigan, an apron
-  function paintPell() {
-    const u = 23 / 30, W = 24, Hh = 30;
-    const S = Tycho.sprite.Shapes.soft(W, Hh, 21, { ink: [10, 8, 16] }); S.line = true;
-    const F = Hh - 2, cx = W / 2, X = (v) => cx + v * u, Y = (v) => F - v * u;
-    S.ax = Math.round(cx); S.ay = F;
-    const skirt = Figure.ramp('#3a3448'), card = Figure.ramp('#9a7aa8'), apron = Figure.ramp('#d8d0c0'), skin = Figure.ramp('#e0b090'), hair = Figure.ramp('#b8b4b0'), shoe = Figure.ramp('#2a2020');
-    S.cap(X(-1), Y(1), X(-1), Y(6), 1.4 * u, 1.3 * u, shoe); S.cap(X(1.5), Y(1), X(1.5), Y(6), 1.4 * u, 1.3 * u, shoe); S.part();
-    S.shape([[X(-3.5), Y(20)], [X(3.5), Y(20)], [X(5), Y(5)], [X(-5), Y(5)]], skirt, { down: 0.3 }); S.part();
-    S.shape([[X(-3.5), Y(21)], [X(3.5), Y(21)], [X(4), Y(12)], [X(-4), Y(12)]], card, { down: 0.3 }); S.part();
-    S.shape([[X(-2.5), Y(16)], [X(3), Y(16)], [X(3.5), Y(6)], [X(-2.5), Y(6)]], apron, { down: 0.2 }); S.part();
-    S.ell(X(0.5), Y(24.5), 3 * u, 3.3 * u, skin); S.part(false);
-    S.ell(X(-0.6), Y(26.5), 3.3 * u, 2 * u, hair); S.ell(X(-2.6), Y(27), 1.8 * u, 1.8 * u, hair);
-    S.px(X(1.8), Y(24.4), [30, 20, 24]); S.part();
-    // a hand raised, waving you over
-    S.cap(X(-2), Y(19.5), X(3.5), Y(14), 1.4 * u, 1.2 * u, card);
-    S.cap(X(3.5), Y(14), X(5), Y(19), 1.2 * u, 1.1 * u, card);
-    return S.done();
-  }
-  // the cat: ginger, on the ridge, its tail moving
-  const CAT_PAL = { o: '#d07030', d: '#8a4018', k: '#1a1010', w: '#f0e0c0' };
-  const CAT = [
-    ['......o.o.', '.....oooo.', 'o....okok.', 'o.ddoooow.', '.oooooo...', '.o.o..o.o.'],
-    ['..........', '.....oo.o.', 'o....oooo.', '.o.ddokok.', '.ooooooow.', '.o.o..o.o.'],
-  ];
+  const ASTER = ['.LLLLLL.', 'LLLLLLLL', 'LssssLLL', 'LsesssLL', 'LsssssLL', '.LLLLLL.', '..LLLL..'];
+  // the cat, the same Biscuit on any roof
+  const CAT = ['.k...k...............kk.', 'kok.kok.............kook', 'koooook..............kok', 'kokookok.............kok', 'koooLook...........kook.', '.koooookkkkkkkkkkkkook..', '.kooOooOooOooOoooooook..', '..koOooOooOooOoooooook..', '..kooooooooooooooooook..', '..kLLoooooooooooooook...', '..kok.kok.....kok.kok...', '..kok.kok.....kok.kok...', '..kk..kk......kk..kk....'];
+  const PELL = ['....kkkk....', '...kSSSSk...', '..kSSSSSSk..', '..kSLLLLSk..', '...kLkLLk...', '...kLLLLk...', '....kkkk....', '...kCCCCk...', '..kCCCCCCk..', '.kCCCCCCCCk.', '.kCkLLLLkCk.', '.kCkLLLLkCk.', '..kkLLLLkk..', '...kLLLLk...', '..kCLLLLCk..', '..kCCCCCCk..', '.kCCCCCCCCk.', '.kkkkkkkkkk.', '...kk..kk...'];
   // the seven lights on the far hills; the middle one is the last, and the
   // others go out in this order
-  const LIGHTS = [[0.12, 0.74], [0.24, 0.7], [0.37, 0.76], [0.5, 0.69], [0.63, 0.75], [0.76, 0.71], [0.88, 0.73]];
+  const LIGHTS = [[0.12, 0.7], [0.24, 0.66], [0.37, 0.69], [0.5, 0.66], [0.63, 0.69], [0.76, 0.67], [0.88, 0.69]];
   const DOUSED = [0, 6, 1, 5, 2, 4];
 
   // ---- the people ---------------------------------------------------------
@@ -218,7 +186,7 @@
   Elsewhere.quest({
     id: 'road', title: 'The Last Lantern', opening: true,
     ask: 'Carry the Lantern to the Spire.',
-    view: 'side', hold: 'landscape',
+    view: 'iso', hold: 'landscape',
     accepts: ['start'], offers: ['doorstep'],
     souvenir: null, checklist: [],
     controls: { layout: 'stick', a: 'Jump', b: 'Use' },
@@ -238,14 +206,22 @@
       const world = ctx.world({ start: 21 * 60 }, people);
       const body = { x: s.x, y: s.y, vx: 0, vy: 0, face: s.face, ground: true, coyote: 0, drop: 0, ladder: null, walked: 0 };
       const runner = new Tycho.move.Platform(NUM);
-      let space = null, W = ROOM_W, t = 0, coldAt = 0, lit = 7, cam = 0;
+      let space = null, W = ROOM_W, t = 0, coldAt = 0, lit = 7;
+      const cam = { x: -999, y: -999 };
       // the scenes' pictures, painted once
-      const sky = paintSky(520, H, 3), coldSky = paintSky(520, H, 5, 0.95), hollow = paintHollow(300, 150);
-      const mountains = paintMountains(520, H, 7), hills = paintHills(420, H, 8);
-      let road = null, room = null, aster = null, asterGone = null, pell = null, cats = null;
+      const cold = { sky: paintColdSky().print(DUSK), hollow: paintHollow().print(DUSK), land: paintColdLand().print(DUSK) };
+      const art = {};
+      // the trees either side of the Road, and the dead lanterns along it
+      const R2 = new Tycho.seed.Rng(9), BEHIND = [], BEFORE = [], POSTS = [];
+      for (let i = 0; i < 46; i++) { const x = R2.f(-160, 660), y = R2.f(24, 150) * (i & 1 ? 1 : -1); if (Math.abs(x - 270) < 56 || Math.abs(y) < 26 || (x > 440 && x < 610 && y < 0)) continue; (y < 0 ? BEHIND : BEFORE).push([x, y]); }
+      for (let x = -120; x < 460; x += 96) POSTS.push([x, -16]);
+      for (const l of [BEHIND, BEFORE]) l.sort((a, b) => a[0] + a[1] - b[0] - b[1]);
       const lazy = () => {
-        if (!room) { room = paintRoom(4); aster = paintAster(false); asterGone = paintAster(true); }
-        if (!road) { road = paintRoad(6); pell = paintPell(); cats = CAT.map((rows) => ({ c: Tycho.sprite.spriteFrom(rows, CAT_PAL), e: null, ax: 5, ay: 6 })); }
+        if (art.road) return;
+        const you = Ink.traveler(DUSK, LOOK);
+        art.room = { pal: FIRE, room: paintRoom().print(FIRE), you: Ink.traveler(FIRE, LOOK), aster: Ink.sprite(ASTER, { L, s: O, e: D }, FIRE, 0, 0).c, asterGone: Ink.sprite(ASTER, { L, s: G, e: G }, FIRE, 0, 0).c };
+        art.road = { pal: DUSK, land: paintLand().print(DUSK), sky: paintSkyStrip().print(DUSK), tree: paintTree().print(DUSK), post: paintPost().print(DUSK), cottage: paintCottage().print(DUSK), you,
+          cat: Ink.sprite(CAT, { k: D, o: O, O: M, L }, DUSK, 12, 12), pell: Ink.sprite(PELL, { k: D, S: M, L, C: P }, DUSK, 6, 18) };
       };
       function enter(scene) {
         s.scene = scene; lazy();
@@ -310,69 +286,73 @@
             // the lights go out one by one as the voice says so
             const want = i < 2 ? 7 : Math.max(1, 7 - Math.floor((k - 7) / 0.9));
             if (want < lit) { lit = want; ctx.snd.cue('douse'); }
-            const ox = Math.round((vw - 520) / 2);
-            g.drawImage(coldSky, ox, oy);
-            const drift = Math.min(1, k / 30), hy = Math.round(oy + 2 + drift * 18), hx = Math.round(vw / 2 - 150);
-            g.globalAlpha = 0.85 + Math.sin(k * 0.7) * 0.1; g.drawImage(hollow.c, hx, hy); g.globalAlpha = 1;
-            g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.6 + Math.sin(k * 2.1) * 0.3; g.drawImage(hollow.e, hx, hy); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
-            g.drawImage(mountains, ox, oy + 20);
-            g.drawImage(hills, Math.round((vw - 420) / 2), oy + 26);
+            const ox = Math.round((vw - 560) / 2);
+            g.drawImage(cold.sky, ox, oy);
+            const drift = Math.min(1, k / 30), hy = Math.round(oy + 2 + drift * 18), hx = Math.round(vw / 2 - 160);
+            g.drawImage(cold.hollow, hx, hy);
+            if (Math.sin(k * 2.1) > -0.8) { g.fillStyle = DUSK[L]; g.fillRect(hx + 146, hy + 26, 7, 4); g.fillRect(hx + 167, hy + 26, 7, 4); }
+            g.drawImage(cold.land, ox, oy);
             const out = new Set(DOUSED.slice(0, 7 - lit));
             LIGHTS.forEach(([fx, fy], n) => {
               const x = Math.round(vw * fx), y = Math.round(oy + H * fy);
-              if (!out.has(n)) { g.fillStyle = '#ffe0a0'; g.fillRect(x, y, 1, 1); Figure.halo(g, x, y + 0.5, n === 3 ? 14 : 8, 'rgba(255,200,110,', n === 3 ? 0.5 : 0.3); }
-              else { g.fillStyle = '#2a1e30'; g.fillRect(x, y, 1, 1); }
+              g.fillStyle = DUSK[D]; g.fillRect(x, y, 2, 8); g.fillRect(x - 2, y - 3, 6, 4);
+              if (!out.has(n)) { g.fillStyle = DUSK[L]; g.fillRect(x - 1, y - 2, 4, 2); g.fillStyle = DUSK[O]; g.fillRect(x, y - 2, 2, 1); }
             });
             return;
           }
-          cam = W <= vw ? (W - vw) / 2 : clamp(body.x - vw / 2, 0, W - vw);
-          const cx = Math.round(cam), left = body.face < 0;
-          const pose = !body.ground ? (body.vy < 0 ? 'jump' : 'fall') : Math.abs(body.vx) > 6 ? 'walk' + (Math.floor(body.walked / 5) & 3) : 'stand';
+          const room = s.scene === 'aster', A = room ? art.room : art.road, rowY = room ? WALK_Y : 0;
+          // the player's feet on the grid: x along the way, how high off the ground
+          const [hx, hy] = at(body.x, rowY, GROUND - body.y);
+          const [fx0, fy0] = at(body.x, rowY);
+          // the camera goes with them, and the land runs on past the frame
+          const tx = fx0 - vw / 2, ty = fy0 - vh * (room ? 0.58 : 0.64);
+          cam.x += (tx - cam.x) * 0.14; cam.y += (ty - cam.y) * 0.14;
+          if (Math.abs(cam.x - tx) > 150 || Math.abs(cam.y - ty) > 150) { cam.x = tx; cam.y = ty; }
+          const cx = Math.round(cam.x), cy = Math.round(cam.y);
+          const going = body.ground && Math.abs(body.vx) > 6 && Math.floor(body.walked / 9) & 1;
+          const side = body.face < 0 ? 'l' : 'r', P2 = (going || !body.ground ? A.you.walk : A.you.stand)[side];
           const drawPlayer = () => {
-            if (!s.given) { Figure.draw(g, Figure.pose(STYLE, pose, left), body.x - cx, body.y + oy); return null; }
-            return Figure.player(g, STYLE, pose, body.x - cx, body.y + oy, left);
+            const px = Math.round(hx) - cx, py = Math.round(hy) - cy;
+            // (in the air, a little shadow says where the ground is)
+            if (!body.ground) { g.fillStyle = A.pal[room ? D : G]; g.fillRect(Math.round(fx0) - cx - 6, Math.round(fy0) - cy - 1, 12, 2); }
+            Figure.draw(g, P2, px, py);
+            if (s.given) Figure.draw(g, A.you.lantern, px + 7 * body.face, py - 11);
           };
-          if (s.scene === 'aster') {
-            g.fillStyle = '#000'; g.fillRect(0, 0, vw, vh);
-            g.drawImage(room.c, -cx, oy);
-            // the fire, a few flames
+          if (room) {
+            g.fillStyle = FIRE[D]; g.fillRect(0, 0, vw, vh);
+            g.drawImage(A.room, ROOM.x - cx, ROOM.y - cy);
+            // the fire, a few flames in the hearth's mouth
             for (let i = 0; i < 8; i++) {
-              const fx = Math.round(38 + i * 5.5 - cx), mid = 1 - Math.abs(i - 3.5) / 4.5, fh = Math.round((5 + mid * 12 + Tycho.seed.fxRand.f(5)) * (s.gone ? 0.5 : 1)), fy = GROUND - 1 + oy;
-              g.fillStyle = '#c84a1a'; g.fillRect(fx, fy - fh, 1, fh); g.fillRect(fx - 1, fy - Math.round(fh * 0.6), 3, Math.round(fh * 0.6));
-              g.fillStyle = '#ffa040'; g.fillRect(fx, fy - Math.round(fh * 0.7), 1, Math.round(fh * 0.7));
-              g.fillStyle = '#ffe080'; g.fillRect(fx, fy - Math.round(fh * 0.3), 1, Math.round(fh * 0.3));
+              const [ix, iy] = at(38 + i * 5.5, 14), mid = 1 - Math.abs(i - 3.5) / 4.5, fh = Math.round((4 + mid * 12 + Tycho.seed.fxRand.f(5)) * (s.gone ? 0.5 : 1)), x = Math.round(ix) - cx, y = Math.round(iy) - cy;
+              g.fillStyle = FIRE[O]; g.fillRect(x, y - fh, 3, fh); g.fillStyle = FIRE[L]; g.fillRect(x + 1, y - Math.round(fh * 0.45), 1, Math.round(fh * 0.45));
             }
-            g.fillStyle = '#3a1a0e'; g.fillRect(Math.round(34 - cx), GROUND - 3 + oy, 46, 3); // the logs
-            Figure.draw(g, s.gone ? asterGone : aster, 268 - cx, GROUND - 12 + oy);
-            if (!s.given) Figure.draw(g, Figure.lantern(STYLE), STOOL_X + 1 - cx, GROUND - 26 + oy);
-            const at = drawPlayer();
-            // the dark of the room, the fire's light and the Lantern's
-            g.fillStyle = 'rgba(4,3,12,0.42)'; g.fillRect(0, 0, vw, vh);
-            Figure.halo(g, 58 - cx, GROUND - 14 + oy, 110, 'rgba(255,140,60,', 0.32 + Tycho.seed.fxRand.f(0.05));
-            Figure.halo(g, 188 - cx, 70 + oy, 60, 'rgba(110,150,255,', 0.12);
-            if (!s.given) Figure.halo(g, STOOL_X + 1 - cx, GROUND - 20 + oy, 70, 'rgba(255,210,120,', 0.4);
-            else if (at) Figure.halo(g, at[0], at[1], 90, 'rgba(255,210,120,', 0.5);
+            const [ax, ay] = at(240, 20, 12);
+            g.drawImage(s.gone ? A.asterGone : A.aster, Math.round(ax) - cx - 4, Math.round(ay) - cy - 4);
+            if (!s.given) { const [lx, ly] = at(STOOL_X + 7, 19, 22); Figure.draw(g, A.you.lantern, Math.round(lx) - cx, Math.round(ly) - cy); }
+            drawPlayer();
             return;
           }
-          // the road
-          g.drawImage(sky, Math.round(-cam * 0.05), oy);
-          g.drawImage(mountains, Math.round(-cam * 0.2), oy + 14);
-          g.drawImage(hills, Math.round(-cam * 0.5), oy + 18);
-          g.drawImage(road.c, -cx, oy);
-          if (road.e) { g.globalCompositeOperation = 'lighter'; g.drawImage(road.e, -cx, oy); g.globalCompositeOperation = 'source-over'; }
+          // the Road: the land, then the sky standing fixed behind it
+          g.fillStyle = DUSK[V]; g.fillRect(0, 0, vw, vh);
+          g.drawImage(A.land, GX - cx, GY - cy);
+          g.drawImage(A.sky, Math.round((vw - 600) / 2 - clamp(cam.x, -60, 500) * 0.03), 0);
+          const stand = (list, sp) => { for (const [x, y] of list) { const [ix, iy] = at(x, y), sy = Math.round(iy) - cy; if (sy > HORIZON + 4 && sy < vh + 40) g.drawImage(sp, Math.round(ix) - cx - (sp.width >> 1), sy - sp.height + 1); } };
+          stand(BEHIND, A.tree); stand(POSTS, A.post);
+          g.drawImage(A.cottage, COT.x - cx, COT.y - cy);
+          { const [ix, iy] = at(532, -37, 66); Figure.draw(g, A.cat, Math.round(ix) - cx, Math.round(iy) - cy + (Math.floor(t * 1.5) % 2)); }
+          { const [ix, iy] = at(PELL_X, -6); Figure.draw(g, A.pell, Math.round(ix) - cx, Math.round(iy) - cy); }
           // the stream's glints
-          for (let i = 0; i < 4; i++) { g.fillStyle = 'rgba(200,220,255,0.5)'; g.fillRect(Math.round(252 + ((t * 9 + i * 11) % 36) - cx), GROUND + 10 + i * 3 + oy, 2, 1); }
-          Figure.draw(g, pell, PELL_X - cx, GROUND - 2 + oy);
-          Figure.draw(g, cats[Math.floor(t * 1.5) % 2], 532 - cx, GROUND - 99 + oy);
-          const at = drawPlayer();
-          if (at) Figure.halo(g, at[0], at[1], 50, 'rgba(255,210,120,', 0.22);
+          g.fillStyle = DUSK[L];
+          for (let i = 0; i < 6; i++) { const [ix, iy] = at(254 + ((t * 9 + i * 11) % 32), -70 + i * 26, -12); g.fillRect(Math.round(ix) - cx, Math.round(iy) - cy, 3, 1); }
+          drawPlayer();
+          stand(BEFORE, A.tree);
           // the Hollow at the edges: dark wisps reaching in from the left and the top
+          g.fillStyle = DUSK[D];
           for (let i = 0; i < 26; i++) {
-            const top = i % 2 === 0, base = (i * 37) % (top ? vw : vh), reach = 10 + (hash(i, 9, 2) % 26) + Math.sin(t * 0.8 + i) * 6;
-            for (let k = 0; k < reach; k += 2) {
-              const sway = Math.sin(t * 1.3 + i * 2 + k * 0.15) * (k * 0.25), a = 0.75 * (1 - k / reach);
-              g.fillStyle = `rgba(14,6,22,${a.toFixed(2)})`;
-              if (top) g.fillRect(Math.round(base + sway), k, Math.round(3 + (reach - k) / 8), 2); else g.fillRect(k, Math.round(base + sway), 2, Math.round(3 + (reach - k) / 8));
+            const top = i % 2 === 0, base = (i * 37) % (top ? vw : vh), reach = 8 + (Tycho.seed.hash(i, 9, 2) * 22 | 0) + Math.sin(t * 0.8 + i) * 5;
+            for (let k = 0; k < reach; k += 3) {
+              const sway = Math.sin(t * 1.3 + i * 2 + k * 0.15) * (k * 0.25), w = Math.round(1 + (reach - k) / 7);
+              if (top) g.fillRect(Math.round(base + sway), k, w, 3); else g.fillRect(k, Math.round(base + sway), 3, w);
             }
           }
         },

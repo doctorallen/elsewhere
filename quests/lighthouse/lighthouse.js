@@ -8,131 +8,79 @@
 // on the floor beside you while it does. A ship far out turns in. It gives
 // you a match you didn't need, and your boat is at the foot of the stairs.
 //
-// The room is painted once, flat and dithered in cold iron and night blues,
-// in its true colors; each frame it's darkened by a light map (an ambient
-// near black, the window's night, the Lantern's warm pool, the lamp once
-// it's lit) multiplied over it, so only what the Lantern touches shows. The
-// lighthouse is one Tyrell person with a long file of things to talk about
+// It's on the isometric grid, the room cut away at the top of its striped tower
+// with the sea running out past the frame. The picture is painted once and
+// printed in three palettes: night, nearly black, where only the Lantern's
+// pool shows the lit print through it; then the lamp catching, a palette at a
+// time, with no light map at all. The lighthouse is one Tyrell person with a long file of things to talk about
 // (Voice); the first answer of every beat moves the quest on, and the others
 // are richer detours.
 // ---------------------------------------------------------------------------
 (() => {
-  const C = Tycho.color, rgb = C.rgb;
-  const ramp = (a, n = 7) => C.rampOf(a.map(rgb), n, 0.5, 0.25);
-  // the room's materials, dark to light
-  const IRON = ramp(['#10131c', '#2c3342', '#5a6476', '#8a94a6']);
-  const PLATE = ramp(['#0c0e14', '#22283a', '#46506a']);
-  const COPPER = ramp(['#1e120e', '#5a3622', '#9a6236', '#c88a52']);
-  const GLASS = ramp(['#0e1e24', '#2e5a62', '#78b4b0', '#d4f4ec'], 9);
-  const WOOD = ramp(['#1c100a', '#4a2a18', '#7a4c2c', '#a06a3e']);
-  const PAPER = ramp(['#6a6250', '#b8ac90', '#ece2c8']);
-  const SKY = ramp(['#010208', '#060b1e', '#101a36', '#1e2c4c'], 9);
-  const SEA = ramp(['#000104', '#030812', '#081626', '#12263e'], 9);
-  const BRASS = ramp(['#2a1e0a', '#6a5224', '#b8963e', '#e8cc78']);
-  // the player and the Lantern in this world: a little bigger, inked in night blue
-  const STYLE = { key: 'lighthouse', h: 26, flat: true, ink: '#03040c', glass: '#ffd890' };
-  // the room in its own px: the floor at y 0, x from -150 to 150
-  const RX0 = -150, RY0 = -178, RW = 300, RH = 222;
-  const WIN = { x0: -126, x1: 126, y0: -118, y1: -34, sea: -66 };
-  const LENS = { x: 0, y: -72 };
+  // the room, on the 2:1 grid, up on its tower in the open sea: a square of
+  // floor 84 across, walled in glass on the far two sides, cut away on the near
+  const iso = (u, v, z = 0) => [u - v, (u + v) / 2 - z];
   const DESK = -94, HATCH = 72, LEFT = -104;
-  // ordered dither: the night's grain, 4 × 4
-  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-  const dith = (x, y, k = 0.12) => (BAYER[(y & 3) * 4 + (x & 3)] / 16 - 0.47) * k;
-  const cl = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  // the one way across the room: from the desk, round the front of the lens, to the hatch
+  const walkAt = (t) => { const a = (1 - t) ** 2, b = 2 * t * (1 - t), c = t * t; return [14 * a + 66 * b + 71 * c, 54 * a + 84 * b + 16 * c]; };
+  const pathT = (x) => Math.max(0, Math.min(1, (x - LEFT) / (HATCH - 4 - LEFT)));
   const ease = (t) => t * t * (3 - 2 * t);
-  // the lens: a glass beehive, its half-width at y (none outside it)
-  const lensHalf = (y) => { const k = (y - LENS.y) / 44; return Math.abs(k) > 1 ? -1 : 19 + 6 * Math.cos(k * Math.PI / 2) - (Math.abs(k) > 0.92 ? 6 : 0); };
-  const lensRings = (x, y, bright) => {
-    const ring = Math.floor((y - LENS.y + 60) / 4), r = Math.hypot(x, (y - LENS.y) * 1.3);
-    if (bright) return cl((r < 13 ? 0.95 - r / 40 : 0.4 + (ring & 1 ? 0.3 : 0)) - Math.abs(x) / 90 + dith(x, y, 0.1));
-    let v = r < 13 ? 0.45 + (Math.floor(r / 3) & 1 ? 0.22 : 0) - x / 60 : 0.32 + (ring & 1 ? 0.18 : 0) - x / 70 + dith(x, y, 0.18);
-    if (Math.abs(x) === 10 || Math.abs(x) === 20) v -= 0.25;
-    return cl(v);
-  };
 
-  // the room, painted once: its picture in true color, and its glow (stars)
-  function paintRoom(seed) {
-    const P = new Tycho.paint.Pix(RW, RH, RX0, RY0, { flat: true });
-    const R = new Tycho.seed.Rng(seed);
-    const X1 = RX0 + RW - 1, Y1 = RY0 + RH - 1;
-    // the iron walls round the lamp room
-    P.area(RX0, RY0, X1, Y1, IRON, (x, y) => cl(0.28 + dith(x, y) + (Math.abs(x) > 128 ? -0.08 : 0) + ((x + 400) % 34 < 2 ? -0.1 : 0)));
-    // the dome overhead: copper ribs, a brass ring where it meets the glass
-    P.area(-140, RY0, 140, WIN.y0 - 7, COPPER, (x, y) => cl(0.36 + (y - RY0) / 160 + dith(x, y) - (((x + 300) % 28) < 2 ? 0.22 : 0) - Math.abs(x) / 600), { inside: (x, y) => y > RY0 + 30 - Math.sqrt(Math.max(0, 140 * 140 - x * x)) * 0.2 });
-    P.area(-140, WIN.y0 - 6, 140, WIN.y0 - 1, BRASS, (x, y) => cl(0.45 + (y === WIN.y0 - 6 ? 0.3 : 0) + dith(x, y)));
-    // the windows: the night outside, sky over sea, a faint horizon
-    P.area(WIN.x0, WIN.y0, WIN.x1, WIN.sea - 1, SKY, (x, y) => cl(0.2 + (y - WIN.y0) / (WIN.sea - WIN.y0) * 0.6 + dith(x, y, 0.2)));
-    P.area(WIN.x0, WIN.sea, WIN.x1, WIN.y1, SEA, (x, y) => cl(0.62 - (y - WIN.sea) / 40 + dith(x, y, 0.22) + (((x * 7 + y * 13) % 23) === 0 ? 0.2 : 0)));
-    for (let x = WIN.x0; x <= WIN.x1; x++) P.put(x, WIN.sea, SEA[6]);
-    // the window's iron: diamond panes and posts
-    for (let y = WIN.y0; y <= WIN.y1; y++) for (let x = WIN.x0; x <= WIN.x1; x++) {
-      if ((x - y + 600) % 26 === 0 || (x + y + 600) % 26 === 0) P.put(x, y, IRON[1]);
-      if (Math.abs(((x + 600) % 63) - 31) > 29) P.put(x, y, IRON[(x + 600) % 63 === 1 ? 3 : 1]);
+  // ---- the eight inks: the picture is printed in each of three palettes, ----
+  // so the night is a real limit and the lamp catching is a palette stepping up
+  const D = 0, M = 1, S = 2, L = 3, Y = 4, T = 5, R = 6, B = 7;
+  const NIGHT = ['#03040c', '#0a1230', '#1c2a48', '#54607a', '#3a3a40', '#2a1c20', '#3a2420', '#0c1a3a'];
+  const KINDLE = ['#05061a', '#142a5c', '#46688a', '#b0a878', '#a88838', '#6e3c22', '#94462a', '#1a4478'];
+  const LIT = ['#060a24', '#1e3a78', '#7aa0c0', '#fff0a8', '#ffc84a', '#b0602c', '#e0642c', '#2c6ab0'];
+
+  const ROOM = { x: -210, y: -44, w: 420, h: 314 };
+  function paintRoom() {
+    const P = new Ink.Sheet(ROOM.w, ROOM.h); P.ox = ROOM.x; P.oy = ROOM.y;
+    const I = new Ink.Iso(P, iso);
+    // the rocks, the foam, the striped tower going down to them
+    P.opoly(Ink.curve([[-76, 132], [-50, 114], [-10, 106], [50, 110], [86, 124], [80, 140], [40, 148], [-50, 148]]), T);
+    P.opoly(Ink.curve([[-60, 134], [-32, 122], [0, 128], [-24, 144]]), M); P.opoly(Ink.curve([[36, 132], [62, 124], [74, 136], [48, 144]]), M);
+    [[-78, 140], [-40, 112], [54, 110], [88, 134]].forEach(([x, y]) => { P.rect(x, y, 9, 2, L); P.rect(x + 2, y - 1, 5, 1, L); });
+    const band = (x, y) => (((y - Math.abs(x) * 0.5) | 0) >> 4) & 1 ? L : R;
+    I.left(18, 66, -88, 48, 88, band); I.right(66, 18, -88, 48, 88, (x, y) => (band(x, y) === L ? S : T));
+    // the floor and its boards, the glass walls, their copper rail
+    I.box(0, 0, -6, 84, 84, 6, [M, T, D]);
+    for (const v of [14, 28, 42, 56, 70]) I.line(0, v, 0, 84, v, 0, D);
+    I.left(0, 0, 0, 84, 34, D); I.right(0, 0, 0, 84, 34, D);
+    for (let i = 0; i < 3; i++) {
+      const u = 3 + i * 27;
+      I.left(u, 0, 5, 24, 26, B); P.opoly([iso(u, 0, 31), iso(u + 24, 0, 31), iso(u + 24, 0, 14), iso(u, 0, 14)], M);
+      I.right(0, u, 5, 24, 26, B); P.opoly([iso(0, u, 31), iso(0, u + 24, 31), iso(0, u + 24, 14), iso(0, u, 14)], M);
     }
-    P.block(WIN.x0 - 4, WIN.y1 + 1, WIN.x1 + 4, WIN.y1 + 4, IRON, { base: 0.5 });
-    // the wall under the windows: plates and rivets, a brass rail
-    P.area(-140, WIN.y1 + 5, 140, -1, PLATE, (x, y) => cl(0.45 + dith(x, y) + (((x + 600) % 40) === 0 ? -0.2 : 0) + ((x + 600) % 40 === 4 && (y + 600) % 8 === 2 ? 0.35 : 0)));
-    for (let x = -140; x <= 140; x++) { P.put(x, -18, BRASS[5]); P.put(x, -17, BRASS[2]); }
-    // the floor: iron plate, and the hatch with the stairs going down
-    P.area(-150, 0, 149, 6, IRON, (x, y) => cl((y === 0 ? 0.7 : 0.38) + dith(x, y) + ((x + y * 3) % 9 === 0 ? 0.08 : 0)));
-    P.area(-150, 7, 149, Y1, PLATE, (x, y) => cl(0.12 - (y - 7) / 120 + dith(x, y, 0.08)));
-    P.area(HATCH + 6, 0, HATCH + 40, Y1, PLATE, () => 0);
-    for (let i = 0; i < 7; i++) {
-      const sx = HATCH + 8 + i * 4, sy = 3 + i * 6;
-      P.area(sx, sy, sx + 14, sy + 2, IRON, (x, y) => cl((y === sy ? 0.55 : 0.25) - i * 0.05 + dith(x, y)));
-    }
-    for (const px of [HATCH + 4, HATCH + 42]) P.area(px, -20, px + 1, 0, BRASS, (x) => (x === px ? 0.7 : 0.35));
-    for (let x = HATCH + 4; x <= HATCH + 43; x++) { P.put(x, -20, BRASS[5]); P.put(x, -19, BRASS[2]); }
-    // the lens on its pedestal, with the clockwork's door
-    P.block(-18, -33, 18, -29, IRON, { base: 0.55 });
-    P.block(-12, -29, 12, -1, IRON, { base: 0.4, panels: [8, 10] });
-    P.area(-5, -22, 4, -10, BRASS, (x, y) => cl(0.35 + (x === -5 || y === -22 ? 0.3 : 0) + dith(x, y)));
-    P.area(-26, LENS.y - 46, 26, -34, GLASS, (x, y) => lensRings(x, y, false), { inside: (x, y) => Math.abs(x) <= lensHalf(y) });
-    P.area(-20, LENS.y - 48, 20, LENS.y - 44, BRASS, (x, y) => cl(0.5 + (y === LENS.y - 48 ? 0.3 : 0) + dith(x, y)));
-    // the keeper's desk, his log open on it, and a chair
-    P.block(DESK - 18, -23, DESK + 20, -20, WOOD, { base: 0.6 });
-    P.block(DESK - 16, -20, DESK + 18, -13, WOOD, { base: 0.4 });
-    for (const lx of [DESK - 16, DESK + 16]) P.block(lx, -13, lx + 2, 0, WOOD, { base: 0.35 });
-    P.area(DESK - 2, -18, DESK + 3, -16, BRASS, () => 0.6);
-    P.area(DESK - 10, -26, DESK + 8, -24, PAPER, (x, y) => cl(0.62 + dith(x, y) - (x === DESK - 1 ? 0.5 : 0) - ((y === -25 && (x * 5) % 3 === 0) ? 0.35 : 0)));
-    const ch = DESK + 30;
-    P.block(ch - 6, -12, ch + 5, -10, WOOD, { base: 0.55 });
-    P.block(ch + 3, -30, ch + 5, -12, WOOD, { base: 0.45 });
-    P.block(ch - 6, -28, ch + 5, -26, WOOD, { base: 0.45 });
-    for (const lx of [ch - 6, ch + 3]) P.block(lx, -10, lx + 1, 0, WOOD, { base: 0.3 });
-    // the stars, on the glow picture
-    for (let i = 0; i < 46; i++) {
-      const x = R.i(WIN.x0 + 1, WIN.x1 - 1), y = R.i(WIN.y0 + 1, WIN.sea - 6);
-      if ((x - y + 600) % 26 && (x + y + 600) % 26 && Math.abs(((x + 600) % 63) - 31) <= 29) P.put(x, y, [170, 190, 230], R.f(0.25, 0.8));
-    }
-    return P.canvases();
+    I.top(-2, -2, 88, 3, 34, T); I.top(-2, -2, 3, 88, 34, T);
+    // the pedestal, the keeper's desk and log, the hatch and its stairs
+    I.box(28, 28, 0, 28, 28, 5, [S, T, D]);
+    I.box(6, 58, 0, 7, 20, 9, [T, T, D]);
+    const k = iso(10, 68, 9); P.opoly([[k[0] - 7, k[1]], [k[0], k[1] - 3], [k[0] + 7, k[1]], [k[0], k[1] + 3]], L);
+    I.top(64, 10, 14, 12, 0, D); I.line(66, 14, 0, 76, 14, 0, T); I.line(66, 18, 0, 76, 18, 0, T);
+    return P;
   }
-  // what stands in front of the windows (the lens and its pedestal), in
-  // black: the window's night doesn't light it, only the Lantern does
-  function paintMask() {
-    const [c, g] = Tycho.sprite.canvas(RW, RH);
-    g.fillStyle = '#000';
-    for (let y = LENS.y - 48; y <= -1; y++) {
-      const hw = y < -34 ? lensHalf(y) : y < -29 ? 18 : 12;
-      if (hw >= 0) g.fillRect(Math.round(-hw) - RX0, y - RY0, Math.round(hw * 2) + 1, 1);
-    }
-    return c;
+  // the great lens: bands of glass round a core, a sheet of its own so the beam passes behind it
+  const LENS = { w: 80, h: 80, cx: 40, base: 74, z: 58 };
+  function paintLens() {
+    const P = new Ink.Sheet(LENS.w, LENS.h), k = 0.58, top = LENS.base - 100 * k, at = (x, y) => [LENS.cx + x * k, top + y * k];
+    const shape = Ink.curve([at(0, 0), at(28, 8), at(40, 52), at(28, 100), at(-28, 100), at(-40, 52), at(-28, 8)]);
+    P.poly(shape, Y); P.disc(LENS.cx, top + 52 * k, 22 * k, 30 * k, L);
+    for (let y = 12; y < 98; y += 14) { const e = Math.abs(y - 52) / 48, w = (40 - e * e * 13) * k; P.path(Ink.curve([[LENS.cx - w, top + y * k], [LENS.cx, top + (y + 3) * k], [LENS.cx + w, top + y * k]], false, 4), T); }
+    P.path(shape, D, true);
+    return P;
   }
-  // the lens, lit: its rings in warm light, added over the room
-  function paintLensGlow() {
-    const P = new Tycho.paint.Pix(56, 100, -28, LENS.y - 50, { flat: true });
-    const WARM = ramp(['#3a1e06', '#c87a2a', '#ffd890', '#fff8e4'], 9);
-    P.area(-26, LENS.y - 46, 26, -34, WARM, (x, y) => lensRings(x, y, true), { inside: (x, y) => Math.abs(x) <= lensHalf(y) });
-    return P.canvases().c;
+  // a ship, far out
+  function paintShip() {
+    const P = new Ink.Sheet(30, 24);
+    P.opoly([[1, 17], [28, 17], [23, 23], [6, 23]], D); P.rect(14, 1, 1, 16, D); P.opoly([[16, 3], [26, 15], [16, 15]], L); P.rect(4, 19, 2, 2, R);
+    return P;
   }
-  // the beam: a long cone, its apex at the left, fading out
-  function paintBeam() {
-    const [c, g] = Tycho.sprite.canvas(320, 64);
-    const gr = g.createLinearGradient(0, 0, 320, 0);
-    gr.addColorStop(0, 'rgba(255,236,190,0.9)'); gr.addColorStop(0.5, 'rgba(255,220,160,0.28)'); gr.addColorStop(1, 'rgba(255,220,160,0)');
-    g.fillStyle = gr; g.beginPath(); g.moveTo(0, 30); g.lineTo(320, 0); g.lineTo(320, 64); g.lineTo(0, 34); g.closePath(); g.fill();
-    return c;
+  // the Lantern's pool: a disc with a fat dithered edge, 140 across, in two sizes for the flicker
+  function paintPool(r) {
+    const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5], P = new Ink.Sheet(140, 140);
+    for (let y = 0; y < 140; y++) for (let x = 0; x < 140; x++) { const t = (Math.hypot(x - 70, (y - 70) * 1.2) / r - 0.62) / 0.38; if (t < 0 || (t < 1 && BAYER[((y >> 1) & 3) * 4 + ((x >> 1) & 3)] / 16 > t)) P.px(x, y, 0); }
+    return P.print(['#ffffff']);
   }
 
   // the lighthouse's file: what it talks about
@@ -276,7 +224,7 @@
     id: 'lighthouse',
     title: "Nobody's lighthouse",
     ask: 'Ships used to come round the point every night. Why did they stop?',
-    view: 'room', hold: 'any', px: 180,
+    view: 'iso', hold: 'any', px: 180,
     accepts: ['water'], offers: ['boat'],
     souvenir: {
       id: 'match', name: 'A match',
@@ -323,14 +271,26 @@
 
     make(ctx, way, saved) {
       const V = ctx.view, pad = ctx.pad, fx = Tycho.seed.fxRand;
-      const room = paintRoom(ctx.seed), mask = paintMask(), lensGlow = paintLensGlow(), beam = paintBeam();
-      // the light map, redrawn every frame (a picture of its own on the GPU)
-      const [Lc, Lg] = Tycho.sprite.canvas(8, 8); Lc.gpuLive = true;
+      const sheets = { room: paintRoom(), lens: paintLens() }, PAL = [NIGHT, KINDLE, LIT];
+      const art = PAL.map((p) => ({ room: sheets.room.print(p), lens: sheets.lens.print(p) }));
+      art[2].you = Ink.traveler(LIT, { k: D, h: R, H: T, s: L, c: B, C: M, r: R, l: S, g: Y, G: L });
+      const ship = paintShip().print(LIT), pools = [paintPool(62), paintPool(66)];
+      // the pool of light, redrawn every frame (a picture of its own on the GPU)
+      const [Lc, Lg] = Tycho.sprite.canvas(140, 140); Lc.gpuLive = true;
+      // a flat wedge of light, one row of pixels at a time
+      function wedge(g, p, H) {
+        const y0 = Math.max(0, Math.floor(Math.min(...p.map((q) => q[1])))), y1 = Math.min(H, Math.ceil(Math.max(...p.map((q) => q[1]))));
+        for (let y = y0; y < y1; y++) {
+          const Y0 = y + 0.5, xs = [];
+          for (let i = 0; i < 4; i++) { const a = p[i], b = p[(i + 1) % 4]; if ((a[1] <= Y0 && b[1] > Y0) || (b[1] <= Y0 && a[1] > Y0)) xs.push(a[0] + (Y0 - a[1]) / (b[1] - a[1]) * (b[0] - a[0])); }
+          if (xs.length >= 2) { const a = Math.round(Math.min(...xs)), b = Math.round(Math.max(...xs)); g.fillRect(a, y, b - a, 1); }
+        }
+      }
       // where things stand: arrive, climb, talk1, log, talk2, lighting, ship, thanks, leave, gone
       const s = Object.assign({ stage: 'arrive', x: HATCH + 20, y: 30, t: 0, lit: 0, ship: 0 }, saved || {});
       if (s.stage === 'arrive' || s.stage === 'climb' || s.stage === 'talk1') { s.stage = 'arrive'; s.x = HATCH + 20; s.y = 30; }
       if (s.stage === 'gone') s.stage = 'leave';
-      let face = -1, walked = 0, beamA = 0, waveIn = 1.5, started = false, cam = 0;
+      let face = -1, walked = 0, beamA = 0, waveIn = 1.5, started = false, anim = 0;
       const world = ctx.world({ start: 21 * 60, modules: ['reverie', 'fellowship', 'cityspeak', 'voice'] }, people);
       const fact = (k) => world.fact(k);
       if (s.lit >= 1) ctx.snd.play(SCORE_LIT);
@@ -414,95 +374,53 @@
         },
         draw(g, dt) {
           const W = V.w, H = V.h, lit = s.lit;
-          const fy = Math.min(H - 26, Math.round(H * 0.5 + 70));
-          // the camera: the whole room if it fits, else following the player
-          const half = W / 2, target = W >= RW ? 0 : Tycho.math.clamp(s.x, RX0 + half, RX0 + RW - half);
-          cam += (target - cam) * 0.08; if (Math.abs(target - cam) < 0.3) cam = target;
-          const ox = Math.round(W / 2 - cam), oy = fy;
+          const step = lit >= 0.66 ? 2 : lit > 0 ? 1 : 0, pal = PAL[step], A = art[step], you = art[2].you;
+          const ox = Math.round(W / 2), oy = Math.round(H * 0.2);
           beamA += (dt || 0) * 0.55 * lit;
-          g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
-          g.drawImage(room.c, ox + RX0, oy + RY0);
-          // the player, and the Lantern: in hand, or on the floor beside them
-          const px = ox + Math.round(s.x), py = oy + Math.round(s.y);
-          let lx, ly;
-          if (seated()) {
-            Figure.draw(g, Figure.pose(STYLE, 'sit', true), px, py);
-            const L = Figure.lantern(STYLE); Figure.draw(g, L, px - 14, py - L.h + 1);
-            lx = px - 14; ly = py - L.h * 0.45;
-          } else {
-            const left = face < 0, moving = s.stage === 'climb' || Math.abs(pad.move.x) > 0.15;
-            const spr = s.y > 0 ? Figure.pose(STYLE, 'climb' + (Math.floor(walked / 6) & 1), left) : moving ? Figure.walk(STYLE, walked, left) : Figure.pose(STYLE, 'stand', left);
-            // (on the stairs the floor hides the legs: drawn clipped to above it)
-            if (s.y > 0) { g.save(); g.beginPath(); g.rect(0, 0, W, oy + 1); g.clip(); }
-            Figure.draw(g, spr, px, py);
-            const L = Figure.lantern(STYLE), hx = px + spr.hx, hy = py + spr.hy;
-            Figure.draw(g, L, hx, hy);
-            if (s.y > 0) g.restore();
-            lx = hx; ly = hy + L.h * 0.5;
+          anim += dt || 0;
+          // the sea, all the way out: flat, with rows of marks that drift
+          g.fillStyle = pal[B]; g.fillRect(0, 0, W, H);
+          for (let j = 0; j * 18 < H + 18; j++) for (let i = -1; i * 44 < W + 44; i++) {
+            const x = i * 44 + (j & 1) * 22 + Math.round(Math.sin(anim * 0.8 + j) * 3), y = j * 18 + 6;
+            g.fillStyle = pal[M]; g.fillRect(x, y, 9, 1); g.fillStyle = pal[S]; g.fillRect(x + 3, y - 1, 4, 1);
           }
-          // the light map: near black, the window's night, the Lantern's pool, the lamp
-          if (Lc.width !== W || Lc.height !== H) { Lc.width = W; Lc.height = H; }
-          const amb = [12 + 120 * lit, 15 + 104 * lit, 28 + 70 * lit].map(Math.round);
-          Lg.globalCompositeOperation = 'source-over';
-          Lg.fillStyle = `rgb(${amb[0]},${amb[1]},${amb[2]})`; Lg.fillRect(0, 0, W, H);
-          Lg.globalCompositeOperation = 'lighter';
-          Lg.fillStyle = `rgb(${Math.round(88 + 117 * lit)},${Math.round(98 + 107 * lit)},${Math.round(132 + 78 * lit)})`;
-          Lg.fillRect(ox + WIN.x0, oy + WIN.y0, WIN.x1 - WIN.x0 + 1, WIN.y1 - WIN.y0 + 1);
-          Lg.globalCompositeOperation = 'source-over'; Lg.globalAlpha = 0.88 * (1 - lit);
-          Lg.drawImage(mask, ox + RX0, oy + RY0); Lg.globalAlpha = 1;
-          Lg.globalCompositeOperation = 'lighter';
-          const fl = fx.f(-2, 2), R0 = 78 + fl;
-          const lgr = Lg.createRadialGradient(lx, ly, 0, lx, ly, R0);
-          lgr.addColorStop(0, 'rgb(255,214,150)'); lgr.addColorStop(0.35, 'rgb(150,112,72)'); lgr.addColorStop(1, 'rgb(0,0,0)');
-          Lg.fillStyle = lgr; Lg.fillRect(lx - R0, ly - R0, R0 * 2, R0 * 2);
-          const cx = ox + LENS.x, cy = oy + LENS.y;
+          // the ship, far out, turning in
+          if (s.ship > 0) { const k = ease(s.ship); g.drawImage(ship, Math.round(ox + Math.min(W / 2 - 34, 150) - (1 - k) * 30), oy + 72 + Math.round(6 * k)); }
+          g.drawImage(A.room, ox + ROOM.x, oy + ROOM.y);
+          // the beam, sweeping round: two flat wedges, under the lens
+          const cx = ox, cy = oy + 16;
           if (lit > 0) {
-            const R1 = 40 + 420 * lit;
-            const gr = Lg.createRadialGradient(cx, cy, 0, cx, cy, R1);
-            gr.addColorStop(0, 'rgb(255,240,200)'); gr.addColorStop(0.5, `rgb(${Math.round(200 * lit)},${Math.round(170 * lit)},${Math.round(120 * lit)})`); gr.addColorStop(1, 'rgb(0,0,0)');
-            Lg.fillStyle = gr; Lg.fillRect(cx - R1, cy - R1, R1 * 2, R1 * 2);
-          } else if (s.stage === 'lighting') {
-            // the first spark, deep in the glass
-            const k = Math.min(1, s.t / 2) * (0.6 + fx.f(0, 0.4)), R1 = 26;
-            const gr = Lg.createRadialGradient(cx, cy, 0, cx, cy, R1);
-            gr.addColorStop(0, `rgb(${Math.round(200 * k)},${Math.round(140 * k)},${Math.round(70 * k)})`); gr.addColorStop(1, 'rgb(0,0,0)');
-            Lg.fillStyle = gr; Lg.fillRect(cx - R1, cy - R1, R1 * 2, R1 * 2);
+            g.fillStyle = pal[Y];
+            for (const a of [beamA, beamA + Math.PI]) {
+              const dx = Math.cos(a), dy = Math.sin(a) * 0.5, px = -dy, py = dx, near = 18, far = 460, sn = 5, sf = 16 + 20 * lit;
+              wedge(g, [[cx + dx * near + px * sn, cy + dy * near + py * sn], [cx + dx * far + px * sf, cy + dy * far + py * sf], [cx + dx * far - px * sf, cy + dy * far - py * sf], [cx + dx * near - px * sn, cy + dy * near - py * sn]], H);
+            }
           }
-          g.globalCompositeOperation = 'multiply'; g.drawImage(Lc, 0, 0);
-          // what glows: the stars (fainter once the lamp's lit), the Lantern
-          g.globalCompositeOperation = 'lighter';
-          if (room.e) { g.globalAlpha = 1 - lit * 0.7; g.drawImage(room.e, ox + RX0, oy + RY0); g.globalAlpha = 1; }
-          g.globalCompositeOperation = 'source-over';
-          Figure.halo(g, lx, ly, 14 + fl, 'rgba(255,200,110,', 0.45);
-          // the sea's glints, a few at a time
-          g.globalCompositeOperation = 'lighter';
-          g.fillStyle = lit > 0 ? 'rgba(255,220,160,0.35)' : 'rgba(90,120,170,0.35)';
-          for (let i = 0, n = 4 + Math.round(10 * lit); i < n; i++) g.fillRect(ox + fx.i(WIN.x0 + 2, WIN.x1 - 2), oy + fx.i(WIN.sea + 2, WIN.y1 - 2), fx.i(1, 3), 1);
-          // the ship, far out, its lights turning in: green, then red and green
-          if (s.ship > 0) {
-            const k = ease(s.ship), sx = Math.round(ox - 108 + 40 * k), sy = oy + WIN.sea + 1 + Math.round(2 * k);
-            g.fillStyle = 'rgba(255,240,210,0.95)'; g.fillRect(sx, sy - 4, 1, 1);
-            g.fillStyle = 'rgba(90,255,140,0.9)'; g.fillRect(sx + 2, sy - 1, 1, 1);
-            if (k > 0.55) { g.fillStyle = 'rgba(255,90,70,0.9)'; g.fillRect(sx - 2, sy - 1, 1, 1); }
-            g.fillStyle = 'rgba(255,210,150,0.5)'; g.fillRect(sx - 3, sy, 7, 1);
+          const lensX = ox - LENS.cx, lensY = oy + 41 - LENS.base;
+          g.drawImage(A.lens, lensX, lensY);
+          // the first spark, deep in the glass
+          if (s.stage === 'lighting' && lit === 0) { const n = 1 + (Math.min(1, s.t / 2) * 3 | 0); g.fillStyle = LIT[Y]; g.fillRect(cx - n, cy - n + 2, n * 2, n * 2); }
+          // where the traveler is, and where the Lantern is
+          const t = pathT(s.x), [u, v] = walkAt(t), [ix, iy] = iso(u, v), px = ox + Math.round(ix), py = oy + Math.round(iy);
+          // (which way the path runs on the screen here says which way they're facing)
+          const a = walkAt(Math.max(0, t - 0.02)), b = walkAt(Math.min(1, t + 0.02));
+          const left = (b[0] - b[1] - a[0] + a[1] > 0) === (face < 0);
+          const side = left ? 'l' : 'r', moving = s.stage === 'climb' || Math.abs(pad.move.x) > 0.15;
+          const P = seated() ? you.away.r : (moving && Math.floor(walked / 7) & 1 ? you.walk : you.stand)[side];
+          const lx = seated() ? px - 15 : px + (left ? -8 : 7), ly = seated() ? py - 7 : py - 11;
+          // the Lantern's pool: the lit picture showing through, nothing past it
+          if (step < 2) {
+            const m = pools[(anim * 7 | 0) % 2], x0 = Math.round(lx) - 70, y0 = Math.round(ly) - 66;
+            Lg.globalCompositeOperation = 'source-over'; Lg.clearRect(0, 0, 140, 140);
+            Lg.drawImage(art[2].room, ox + ROOM.x - x0, oy + ROOM.y - y0); Lg.drawImage(art[2].lens, lensX - x0, lensY - y0);
+            Lg.globalCompositeOperation = 'destination-in'; Lg.drawImage(m, 0, 0);
+            g.drawImage(Lc, x0, y0);
           }
-          if (lit > 0) {
-            // the lens alight, turning: its rings shimmer as the panels pass
-            g.globalAlpha = lit * (0.65 + 0.35 * Math.cos(beamA * 4)); g.drawImage(lensGlow, ox - 28, oy + LENS.y - 50); g.globalAlpha = 1;
-            // the beam, sweeping round: seen out over the sea through the windows
-            const sx = Math.sin(beamA), toward = Math.cos(beamA);
-            g.save();
-            g.beginPath(); g.rect(ox + WIN.x0, oy + WIN.y0, WIN.x1 - WIN.x0 + 1, WIN.y1 - WIN.y0 + 1); g.clip();
-            g.globalAlpha = lit * (0.35 + 0.4 * Math.max(0, -toward));
-            g.translate(cx, cy - 2); g.scale(sx * 1.1, 1);
-            g.drawImage(beam, 0, -32);
-            g.restore();
-            // and, as it faces you, the glare
-            const glare = Math.pow(Math.max(0, toward), 6) * lit;
-            if (glare > 0.01) Figure.halo(g, cx, cy, 120, 'rgba(255,236,190,', 0.55 * glare);
-            Figure.halo(g, cx, cy, 34, 'rgba(255,230,170,', 0.5 * lit);
-          }
-          g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+          // the traveler: up out of the stairs, standing, or sat by the Lantern on the floor
+          const sy = Math.round(s.y);
+          if (sy > 0) { const vis = Math.max(0, P.h - sy); if (vis > 0) g.drawImage(P.c, 0, 0, P.w, vis, px - P.ax, py - P.ay, P.w, vis); }
+          else Figure.draw(g, P, px, py);
+          if (sy <= 0) Figure.draw(g, you.lantern, lx, ly);
         },
         save() { return { stage: s.stage, x: Math.round(s.x), y: Math.round(s.y), lit: s.lit, ship: s.ship, t: Math.round(s.t * 10) / 10 }; },
         end() { ctx.prompt(null); },

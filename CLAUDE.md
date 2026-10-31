@@ -22,16 +22,17 @@ The browser tests use Chrome through puppeteer-core: `$CHROME`, or Google Chrome
 ## Layout
 
 - `index.html`: the page. Tycho, Tyrell and the bridge, then the shell (`js/`), then each quest, then `js/main.js`.
-- `js/`: the shell, what crosses worlds. `shell.js` (the registry, the current quest, its `ctx`, the handoff), `view.js` (the pixel canvas), `pad.js` (the controls, built per quest), `figure.js` (the player and the Lantern in any style), `save.js`, `log.js` (the quest log and the pack), `talk.js` (the talk box over Voice), `narrate.js`, `snd.js`, `dev.js`, `pwa.js`, `main.js`.
+- `js/`: the shell, what crosses worlds. `shell.js` (the registry, the current quest, its `ctx`, the handoff), `view.js` (the pixel canvas), `pad.js` (the controls, built per quest), `ink.js` (the painter: palette sheets, the 2:1 grid, the traveler), `figure.js` (drawing a sprite), `save.js`, `log.js` (the quest log and the pack), `talk.js` (the talk box over Voice), `narrate.js`, `snd.js`, `dev.js`, `pwa.js`, `main.js`.
 - `quests/<id>/`: one quest: `<id>.js` (its declaration and everything it needs) and `README.md` (its page).
 - `test/`: the checks and the browser tests; `test/out/` (screenshots) isn't committed.
 
 ## Rules
 
-- **A quest is one closure.** Its script is `'use strict'`, then `(() => { ... Elsewhere.quest({...}); Elsewhere.handoff(...); })();`. No globals (`test/check.sh` fails on one). It reads the shell's globals (Tycho, Tyrell, Figure) but never changes the shell's state except through `ctx`, and never touches another quest.
+- **A quest is one closure.** Its script is `'use strict'`, then `(() => { ... Elsewhere.quest({...}); Elsewhere.handoff(...); })();`. No globals (`test/check.sh` fails on one). It reads the shell's globals (Tycho, Tyrell, Ink, Figure) but never changes the shell's state except through `ctx`, and never touches another quest.
 - **The shell owns what crosses worlds**: the Lantern, the pack, the log, the player's name, the save, the handoff, the loop. A quest owns its world: its view, look, controls, people and rules. The fields a quest declares are listed at the top of `js/shell.js`.
 - **Every quest has a bot.** `q.bot()` gives the controls for the step (or pushes taps), and the first answer of every talk moves the quest on, so `node test/smoke.js <id>` plays it to its end.
 - **The rule of the game:** no quest advances the main quest, and no quest is about the Hollow, the Lanterns or the Spire. Nobody in any world knows what a main quest is; "side quest" is said only in the log.
+- **The look.** Isometric, 320 by 180, eight inks to a frame, by the frogs' rule: a dark outline, flat color, a few bold marks, no noise. Paint with `Ink` (js/ink.js), which keeps a picture as palette indexes, so the limit is real and a world can be printed again in another palette. The land runs off every edge of the frame; DESIGN.md has the why and the exceptions.
 - **Determinism.** Anything painted or simulated draws from `ctx.rng(name)`, `ctx.seed` or `Tycho.seed`, never `Math.random` or the clock. `Tycho.seed.fxRand` is for sparkle nothing saves (flames, glints).
 - **State is plain JSON.** A quest's `save()` returns what it needs to resume; its people are stashed by the shell through the bridge.
 - **Draw within Tycho's GPU stand-in.** Each frame, quests draw on `View.g` with fillRect, drawImage, alpha, the four blends, transforms and gradients only, so the renderer can move onto `Tycho.gpu`. Offscreen canvases (pictures painted once) may use anything.

@@ -77,7 +77,7 @@ const Log = {
   // a souvenir's little picture: the quest that gave it drew it (`souvenir.rows`)
   thingPicture(cv, id) {
     let spr = null;
-    if (id === 'lantern') spr = Figure.lantern({ key: 'pack', h: 40 }).c;
+    if (id === 'lantern') spr = Figure.lantern().c;
     else for (const q of Object.values(Elsewhere.quests)) if (q.souvenir && q.souvenir.id === id && q.souvenir.rows) spr = Tycho.sprite.spriteFrom(q.souvenir.rows, q.souvenir.pal);
     if (!spr) return;
     cv.width = spr.width; cv.height = spr.height;
